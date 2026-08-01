@@ -1,0 +1,26 @@
+# 依赖与构建
+node_modules/
+dist/
+
+# 日志与临时文件
+*.log
+renderer-log.txt
+dev-out.log
+dev-err.log
+
+# 调试截图
+furina-window.png
+furina_screen.png
+quad_*.png
+texture_full_preview.png
+
+# ★ 模型文件：芙宁娜模型版权归 miHoYo（原神），作者明确禁止二次配布。
+#   需自行从作者处下载，放入 src/renderer/public/models/furina/
+src/renderer/public/models/
+
+# ★ Cubism Core：Live2D 官方 SDK（专有许可），需自行获取
+src/renderer/public/live2dcubismcore.min.js
+
+# 系统文件
+.DS_Store
+Thumbs.db

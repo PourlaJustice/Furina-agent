@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build:ts",
+      "detail": "编译 main + preload TypeScript",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "build:main", "&&", "npm", "run", "build:preload"],
+      "problemMatcher": ["$tsc"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "build:all",
+      "detail": "完整构建 (ts + vite)",
+      "type": "npm",
+      "script": "build",
+      "problemMatcher": ["$tsc"],
+      "group": "build"
+    },
+    {
+      "label": "dev",
+      "detail": "开发模式",
+      "type": "npm",
+      "script": "dev",
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}
