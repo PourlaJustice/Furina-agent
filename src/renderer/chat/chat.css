@@ -1,0 +1,537 @@
+/* ===== 阶段 3：聊天面板样式 ===== */
+
+/* 右上角聊天开关按钮 */
+#chat-toggle {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 20;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(120, 150, 255, 0.9);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+#chat-toggle:hover {
+  transform: scale(1.1);
+  background: rgba(100, 130, 255, 1);
+}
+#chat-toggle.active {
+  background: rgba(255, 120, 160, 0.95);
+}
+
+/* 聊天面板主体 */
+#chat-panel, #full-chat-panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 64%;
+  max-height: 420px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: rgba(14, 16, 26, 0.94);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  user-select: none;
+}
+#chat-panel.hidden,
+#chat-config-view.hidden,
+#full-chat-panel.hidden,
+#full-chat-config-view.hidden {
+  display: none !important;
+}
+
+/* 头部 */
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(30, 34, 52, 0.9);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;
+}
+.chat-title {
+  color: #cfe0ff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.chat-actions {
+  display: flex;
+  gap: 6px;
+}
+.chat-actions button {
+  border: none;
+  border-radius: 6px;
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #aab6d4;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.chat-actions button:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+/* 消息区 */
+#chat-messages, #full-chat-messages {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 10px 10px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  user-select: text;
+  /* 标准属性：Chromium 默认 overlay 滚动条模式下也能生效 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(111, 139, 255, 0.5) transparent;
+}
+#chat-messages::-webkit-scrollbar, #full-chat-messages::-webkit-scrollbar {
+  width: 6px;
+}
+#chat-messages::-webkit-scrollbar-track, #full-chat-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+#chat-messages::-webkit-scrollbar-thumb, #full-chat-messages::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(111, 139, 255, 0.45), rgba(154, 111, 255, 0.45));
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+#chat-messages::-webkit-scrollbar-thumb:hover, #full-chat-messages::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(111, 139, 255, 0.85), rgba(154, 111, 255, 0.85));
+}
+
+.chat-msg {
+  max-width: 88%;
+  padding: 7px 10px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.chat-msg.user {
+  align-self: flex-end;
+  background: rgba(82, 120, 255, 0.85);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.chat-msg.assistant {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.1);
+  color: #e8ecf7;
+  border-bottom-left-radius: 4px;
+}
+.chat-msg.error {
+  align-self: flex-start;
+  background: rgba(255, 90, 90, 0.25);
+  color: #ffb3b3;
+  border: 1px solid rgba(255, 90, 90, 0.4);
+}
+.chat-msg.system-hint {
+  align-self: center;
+  background: transparent;
+  color: #77829e;
+  font-size: 11.5px;
+  text-align: center;
+}
+.chat-msg.typing::after {
+  content: "▍";
+  animation: blink-cursor 0.9s step-end infinite;
+}
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* 消息内 Markdown 样式 */
+.chat-msg p { margin: 0 0 6px; }
+.chat-msg p:last-child { margin-bottom: 0; }
+.chat-msg h1, .chat-msg h2, .chat-msg h3, .chat-msg h4 {
+  margin: 8px 0 4px;
+  font-size: 1.15em;
+  color: #fff;
+}
+.chat-msg ul, .chat-msg ol { margin: 4px 0; padding-left: 18px; }
+.chat-msg code {
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.9em;
+}
+.chat-msg pre {
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 8px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  margin: 6px 0;
+}
+.chat-msg pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #d8e2ff;
+}
+.chat-msg blockquote {
+  margin: 4px 0;
+  padding-left: 10px;
+  border-left: 3px solid rgba(120, 150, 255, 0.6);
+  color: #aab6d4;
+}
+.chat-msg a { color: #8ab4ff; }
+.chat-msg table { border-collapse: collapse; margin: 6px 0; font-size: 11.5px; }
+.chat-msg th, .chat-msg td { border: 1px solid rgba(255,255,255,0.2); padding: 3px 7px; }
+
+/* 输入区 */
+.chat-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  background: rgba(20, 23, 36, 0.95);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;
+}
+#chat-input, #full-chat-input {
+  flex: 1 1 auto;
+  resize: none;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #eef2ff;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  outline: none;
+  max-height: 84px;
+  min-height: 34px;
+  user-select: text;
+  /* 标准属性：Chromium 默认 overlay 滚动条模式下也能生效 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(111, 139, 255, 0.5) transparent;
+  font-family: inherit;
+}
+#chat-input:focus, #full-chat-input:focus {
+  border-color: rgba(120, 150, 255, 0.6);
+}
+#chat-input::placeholder, #full-chat-input::placeholder {
+  color: #5d6884;
+}
+#chat-send, #full-chat-send {
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 14px;
+  background: linear-gradient(135deg, #6f8bff, #9a6fff);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+#chat-send:hover, #full-chat-send:hover { filter: brightness(1.15); }
+#chat-send:active, #full-chat-send:active { transform: scale(0.96); }
+#chat-send:disabled, #full-chat-send:disabled {
+  filter: grayscale(0.7);
+  cursor: not-allowed;
+}
+
+/* 设置弹层 */
+#chat-config-view, #full-chat-config-view {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: rgba(14, 16, 26, 0.97);
+  padding: 14px;
+  user-select: none;
+  overflow-y: auto; /* 内容超高时可滚动，避免按钮被挤出窗口 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(111, 139, 255, 0.5) transparent;
+}
+#chat-config-view::-webkit-scrollbar, #full-chat-config-view::-webkit-scrollbar {
+  width: 6px;
+}
+#chat-config-view::-webkit-scrollbar-track, #full-chat-config-view::-webkit-scrollbar-track {
+  background: transparent;
+}
+#chat-config-view::-webkit-scrollbar-thumb, #full-chat-config-view::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(111, 139, 255, 0.45), rgba(154, 111, 255, 0.45));
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+#chat-config-view::-webkit-scrollbar-thumb:hover, #full-chat-config-view::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(111, 139, 255, 0.85), rgba(154, 111, 255, 0.85));
+}
+.config-title {
+  color: #e6ecff;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.config-field label {
+  color: #9aa6c8;
+  font-size: 12px;
+}
+.config-field input {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #eef2ff;
+  font-size: 13px;
+  padding: 8px 10px;
+  outline: none;
+  user-select: text;
+  /* 标准属性：Chromium 默认 overlay 滚动条模式下也能生效 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(111, 139, 255, 0.5) transparent;
+}
+.config-field input:focus {
+  border-color: rgba(120, 150, 255, 0.6);
+}
+.config-field select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #eef2ff;
+  font-size: 13px;
+  padding: 8px 30px 8px 10px;
+  outline: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239aa6c8' d='M2.5 4.5 6 8l3.5-3.5-1-1L6 6 3.5 3.5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+}
+.config-field select:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.config-field select:focus {
+  border-color: rgba(120, 150, 255, 0.6);
+  box-shadow: 0 0 0 3px rgba(120, 150, 255, 0.15);
+}
+.config-field select option {
+  background: #141824;
+  color: #eef2ff;
+}
+.config-tip {
+  color: #77829e;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 4px 0 12px;
+  user-select: text;
+  /* 标准属性：Chromium 默认 overlay 滚动条模式下也能生效 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(111, 139, 255, 0.5) transparent;
+}
+.config-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+.config-buttons button {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+#chat-config-save {
+  background: linear-gradient(135deg, #6f8bff, #9a6fff);
+  color: #fff;
+}
+#chat-config-back {
+  background: rgba(255, 255, 255, 0.1);
+  color: #c4cde4;
+}
+#chat-config-save:hover { filter: brightness(1.15); }
+#chat-config-back:hover { background: rgba(255, 255, 255, 0.18); }
+
+/* 设置面板右上角关闭按钮 */
+#config-close, #full-config-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #c4cde4;
+  font-size: 14px;
+  cursor: pointer;
+  z-index: 1;
+}
+#config-close:hover, #full-config-close:hover { background: rgba(255, 255, 255, 0.2); }
+
+/* 消息朗读喇叭按钮 */
+.msg-speak-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0 6px 2px 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #c4cde4;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.msg-speak-btn:hover { background: rgba(255, 255, 255, 0.18); }
+.msg-speak-btn.playing {
+  background: rgba(111, 139, 255, 0.35);
+  color: #fff;
+}
+
+/* ===== 阶段 5：独立全屏聊天窗口（深色星空风格） ===== */
+#full-app { display: none; }
+body.mode-full {
+  background:
+    radial-gradient(1100px 650px at 85% 12%, rgba(124, 108, 255, 0.28), transparent 60%),
+    radial-gradient(900px 600px at 6% 94%, rgba(80, 150, 255, 0.18), transparent 55%),
+    linear-gradient(160deg, #0b1026 0%, #111936 55%, #0d0f24 100%);
+}
+body.mode-full #full-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+body.mode-full #full-app.hidden { display: none; }
+body.mode-full #chat-toggle { display: none; }
+
+/* 顶栏 */
+#full-topbar {
+  height: 52px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: rgba(18, 24, 46, 0.85);
+  border-bottom: 1px solid rgba(140, 160, 255, 0.14);
+  backdrop-filter: blur(10px);
+  -webkit-app-region: drag; /* 无边框窗口：按住顶栏可拖动 */
+  user-select: none;
+}
+.full-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #e8ecff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.full-brand .full-sub {
+  color: #8fa0d8;
+  font-size: 12px;
+  font-weight: 500;
+  padding-left: 10px;
+  border-left: 1px solid rgba(140, 160, 255, 0.2);
+}
+.full-win-controls { display: flex; gap: 6px; }
+.full-win-controls button {
+  width: 36px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #aab6d4;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  -webkit-app-region: no-drag;
+}
+.full-win-controls button:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+#full-close:hover { background: rgba(255, 90, 90, 0.75) !important; color: #fff; }
+
+/* 主体布局：左侧模型（占满剩余）+ 右侧聊天（固定 400px） */
+#full-main { flex: 1; display: flex; overflow: hidden; }
+#full-chat {
+  flex: 0 0 400px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px 18px 18px;
+  order: 2; /* 聊天靠右 */
+}
+/* 全屏面板复用桌宠基础样式，仅覆盖布局差异（非贴底、可滚动） */
+#full-chat-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  position: static;
+  height: auto;
+  max-height: none;
+  border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+
+
+
+
+
+/* 左侧大模型区：占满剩余空间，模型铺满整个区域 */
+#full-model {
+  flex: 1 1 auto;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 16px 18px 22px;
+  order: 1; /* 模型靠左 */
+}
+.full-model-title {
+  position: absolute;
+  top: 26px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: #aebcf0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  text-shadow: 0 0 14px rgba(124, 140, 255, 0.6);
+  pointer-events: none;
+  z-index: 20;
+}
+#full-canvas {
+  width: 100%;
+  height: 100%;
+  border-radius: 20px;
+  background: radial-gradient(900px 620px at 50% 32%, #24305e, #0e132e 78%);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(140, 160, 255, 0.15);
+}
+

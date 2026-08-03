@@ -1,0 +1,63 @@
+// 聊天共享类型 — 主进程与渲染进程共用
+
+/** 对话消息角色 */
+export type ChatRole = "system" | "user" | "assistant";
+
+/** 单条对话消息（与 DeepSeek Chat Completions 格式对齐） */
+export interface ChatMessage {
+  role: ChatRole;
+  content: string;
+}
+
+/** DeepSeek 配置（保存于 userData/chat-config.json） */
+export interface ChatConfig {
+  /** DeepSeek API Key，留空时回退到环境变量 DEEPSEEK_API_KEY */
+  apiKey?: string;
+  /** API 地址，默认 https://api.deepseek.com */
+  baseUrl?: string;
+  /** 模型名，默认 deepseek-chat */
+  model?: string;
+}
+
+/** 主进程 → 渲染进程 流式事件负载 */
+export interface ChatChunkEvent {
+  /** 增量文本（一个 token 片段） */
+  text: string;
+}
+
+/** 主进程 → 渲染进程 完成事件负载 */
+export interface ChatDoneEvent {
+  /** 最终完整回复 */
+  text: string;
+}
+
+/** 主进程 → 渲染进程 错误事件负载 */
+export interface ChatErrorEvent {
+  message: string;
+}
+
+/** MiniMax TTS 配置（保存于 userData/tts-config.json） */
+export interface TtsConfig {
+  /** 是否启用语音朗读 */
+  enabled: boolean;
+  /** MiniMax API Key，留空时回退到环境变量 MINIMAX_API_KEY */
+  apiKey?: string;
+  /** 克隆好的音色 ID（如 furina） */
+  voiceId?: string;
+  /** 合成模型：speech-2.8-hd（高保真）| speech-2.8-turbo（极速） */
+  model?: "speech-2.8-hd" | "speech-2.8-turbo";
+  /** 语速 0.5~2，默认 1 */
+  speed?: number;
+  /** 音量 0~2，默认 1 */
+  volume?: number;
+}
+
+/** 主进程 → 渲染进程 语音合成结果 */
+export interface TtsSpeakResult {
+  /** 音频 base64；为空表示本次未合成（未配置/失败） */
+  audioBase64: string;
+  /** 音频格式 */
+  format: "mp3" | "wav";
+  /** 可选错误信息（不阻塞文字回复） */
+  error?: string;
+}

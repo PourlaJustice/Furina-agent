@@ -28,6 +28,9 @@ export class Live2DManager {
   private blinkPhase: "wait" | "close" | "open" = "wait";
   private blinkStart = 0;
   private nextBlinkAt = 0;
+  private chatMode = false;
+  private speakingTimer: ReturnType<typeof setInterval> | null = null;
+  private baseBounds: PIXI.Rectangle | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -56,6 +59,7 @@ export class Live2DManager {
     this.app.stage.addChild(this.model);
 
     this.fixMaskCount();
+    this.baseBounds = this.model.getLocalBounds();
     this.fitToWindow(1.9); // 特写模式：脸部放大，接近面捕软件视角
     this.setupHitArea();
     this.setupInteractions();
@@ -410,17 +414,18 @@ export class Live2DManager {
   /**
    * 缩放模型。zoom=1 全身适配窗口；>1 特写（脸部放大，头部对齐窗口上部）
    */
-  private fitToWindow(zoom = 1): void {
+  private fitToWindow(zoom = 1, yRatio = 0.12): void {
     if (!this.model) return;
 
-    const bounds = this.model.getBounds();
-    const baseScale = Math.min(this.width / bounds.width, this.height / bounds.height);
-    this.model.scale.set(baseScale * zoom);
+    const base = this.baseBounds ?? this.model.getLocalBounds();
+    if (base.width <= 0 || base.height <= 0) return;
 
-    const finalBounds = this.model.getBounds();
-    this.model.x = (this.width - finalBounds.width) / 2 - finalBounds.x;
+    const baseScale = Math.min(this.width / base.width, this.height / base.height);
+    const s = baseScale * zoom;
+    this.model.scale.set(s);
+    this.model.x = (this.width - base.width * s) / 2 - base.x * s;
     // 特写模式：头部（模型顶部）对齐窗口上部 12% 处，脸部占据画面主体
-    this.model.y = this.height * 0.12 - finalBounds.y;
+    this.model.y = this.height * yRatio - base.y * s;
   }
 
   /**
@@ -433,6 +438,108 @@ export class Live2DManager {
     core?.setParameterValueById("ParamMouthOpenY", Math.min(1, Math.max(0, ratio)));
   }
 
+  /**
+   * 说话嘴型同步：以不规则节奏驱动 ParamMouthOpenY。
+   * 聊天回复流式到达时调用 setSpeaking(true)，结束后调用 setSpeaking(false)。
+   */
+  setSpeaking(active: boolean): void {
+    const core = this.model?.internalModel.coreModel as
+      | { setParameterValueById: (id: string, v: number) => void }
+      | undefined;
+    if (!core?.setParameterValueById) return;
+
+    if (active) {
+      if (this.speakingTimer) return;
+      let phase = 0;
+      this.speakingTimer = setInterval(() => {
+        phase += 0.8 + Math.random() * 0.7;
+        const level = Math.min(1, Math.max(0, Math.abs(Math.sin(phase)) * 0.85 + Math.random() * 0.1));
+        core.setParameterValueById("ParamMouthOpenY", level);
+      }, 70);
+    } else {
+      if (this.speakingTimer) {
+        clearInterval(this.speakingTimer);
+        this.speakingTimer = null;
+      }
+      core.setParameterValueById("ParamMouthOpenY", 0);
+    }
+  }
+
+  /**
+   * 手动指定布局（全屏聊天用：zoom=1 全身适配当前区域）
+   */
+  setLayout(zoom: number, yRatio = 0.12): void {
+    if (!this.model) return;
+    this.fitToWindow(zoom, yRatio);
+  }
+
+  /**
+   * ★ 脚部微露：模型放大，脚部/鞋子在区域底部露出一部分（人物出镜感）
+   * 适用于全屏聊天窗口的模型区
+   */
+  setShoePeek(): void {
+    if (!this.model) return;
+    const base = this.baseBounds ?? this.model.getLocalBounds();
+    if (base.width <= 0 || base.height <= 0) return;
+    // 协调比例：略小于完全显示，避免过大突兀
+    const baseScale = Math.min(this.width / base.width, this.height / base.height);
+    const s = baseScale * 0.98;
+    this.model.scale.set(s);
+    this.model.x = (this.width - base.width * s) / 2 - base.x * s;
+    // 底部：区域下方露出约 6% 高度（鞋子微露）
+    const bottomLocal = base.y + base.height;
+    const peek = this.height * 0.06;
+    this.model.y = this.height + peek - bottomLocal * s;
+    // 顶部：必须让出标题空间（区域高度 8% 以下不放置模型）
+    const topY = this.model.y + base.y * s;
+    if (topY < this.height * 0.08) {
+      this.model.y = this.height * 0.08 - base.y * s;
+    }
+  }
+
+  /**
+   * ★ 完全显示：模型整体缩放适配区域并垂直居中（不裁剪）
+   * 适用于全屏聊天窗口的模型区
+   */
+  setFullBody(): void {
+    if (!this.model) return;
+    const base = this.baseBounds ?? this.model.getLocalBounds();
+    if (base.width <= 0 || base.height <= 0) return;
+    const s = Math.min(this.width / base.width, this.height / base.height);
+    this.model.scale.set(s);
+    this.model.x = (this.width - base.width * s) / 2 - base.x * s;
+    this.model.y = (this.height - base.height * s) / 2 - base.y * s;
+  }
+
+  /**
+   * 调整渲染区域尺寸（全屏聊天时固定模型画布尺寸，保持模型大小不变）
+   */
+  resize(width: number, height: number): void {
+    this.width = width;
+    this.height = height;
+    this.app?.renderer.resize(width, height);
+    if (!this.model) return;
+    // 按当前聊天模式重新布局，模型大小与当前窗口尺寸下的表现完全一致
+    if (this.chatMode) {
+      this.fitToWindow(0.62, 0.03);
+    } else {
+      this.fitToWindow(1.9, 0.12);
+    }
+  }
+
+  /**
+   * 聊天布局切换：打开面板时把模型缩小并贴到窗口顶部（“从面板后探出头”），
+   * 关闭时恢复面部特写布局。
+   */
+  setChatMode(on: boolean): void {
+    this.chatMode = on;
+    if (on) {
+      this.fitToWindow(0.62, 0.03);
+    } else {
+      this.fitToWindow(1.9, 0.12);
+    }
+  }
+
   /** 播放指定名称的动作 */
   playMotion(name: string): void {
     // ★ 注意：Live2DModel.motion() 的参数是 (分组名, 索引)，不是动作名！
@@ -441,6 +548,7 @@ export class Live2DManager {
       internalModel?: {
         motionManager?: {
           definitions?: Record<string, Array<{ Name?: string }>>;
+          stopAllMotions?: () => void;
         };
       };
     })?.internalModel;
@@ -450,8 +558,24 @@ export class Live2DManager {
       const list = defs[group] ?? [];
       const idx = list.findIndex((m) => m.Name === name);
       if (idx >= 0) {
-        const result = (this.model as unknown as { motion: (g: string, i: number) => Promise<boolean> }).motion(group, idx);
-        console.log(`[Furina] playMotion("${name}") -> motion("${group}", ${idx})`, result);
+        // ★ 修复动作叠加（"第三只手"）：
+        // 1) 重置所有部件透明度为默认值——清除旧动作残留的隐藏/移动状态
+        // 2) 停止所有动作
+        // 3) 用最高优先级强制播放新动作
+        const coreAny = (this.model as unknown as {
+          internalModel?: {
+            coreModel?: {
+              _model?: { drawables?: { opacities?: number[] } };
+            };
+          };
+        })?.internalModel?.coreModel;
+        const opacities = coreAny?._model?.drawables?.opacities;
+        if (opacities) {
+          for (let i = 0; i < opacities.length; i++) opacities[i] = 1;
+        }
+        internal?.motionManager?.stopAllMotions?.();
+        const result = (this.model as unknown as { motion: (g: string, i: number, p?: number) => Promise<boolean> }).motion(group, idx, 3);
+        console.log(`[Furina] playMotion("${name}") -> motion("${group}", ${idx}, force)`, result);
         void result.then((ok) => console.log(`[Furina] motion("${group}", ${idx}) resolved: ${ok}`));
         return;
       }
@@ -559,6 +683,7 @@ export class Live2DManager {
   /** 销毁资源 */
   destroy(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
+    if (this.speakingTimer) clearInterval(this.speakingTimer);
     this.model?.destroy();
     this.app?.destroy(true, { children: true });
   }

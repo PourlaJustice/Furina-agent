@@ -24,3 +24,7 @@ src/renderer/public/live2dcubismcore.min.js
 # 系统文件
 .DS_Store
 Thumbs.db
+
+# voice assets: copyrighted reference clips and generated outputs
+voice/ref/
+voice/out/

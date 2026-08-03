@@ -22,7 +22,151 @@
   </style>
 </head>
 <body>
+  <!-- ================= 桌宠视图（默认） ================= -->
   <canvas id="live2d-canvas"></canvas>
+  <button id="chat-toggle" title="聊天">聊</button>
+  <div id="chat-panel" class="hidden">
+    <div class="chat-header">
+      <span class="chat-title">芙宁娜 · 聊天</span>
+      <div class="chat-actions">
+        <button id="chat-clear" title="清空对话">清空</button>
+        <button id="chat-config" title="DeepSeek 设置">⚙ 设置</button>
+        <button id="chat-fullscreen" title="全屏聊天">⛶</button>
+        <button id="chat-close" title="收起面板">✕</button>
+      </div>
+    </div>
+    <div id="chat-messages"></div>
+    <div class="chat-input-row">
+      <textarea id="chat-input" rows="1" placeholder="和芙宁娜说点什么…（Enter 发送 / Shift+Enter 换行）"></textarea>
+      <button id="chat-send">发送</button>
+    </div>
+  </div>
+  <div id="chat-config-view" class="hidden">
+    <button id="config-close" title="关闭设置">✕</button>
+    <div class="config-title">DeepSeek 设置</div>
+    <div class="config-field">
+      <label>API Key</label>
+      <input id="config-apikey" type="password" placeholder="sk-..." autocomplete="off" />
+    </div>
+    <div class="config-field">
+      <label>接口地址</label>
+      <input id="config-baseurl" type="text" placeholder="https://api.deepseek.com" />
+    </div>
+    <div class="config-field">
+      <label>模型</label>
+      <input id="config-model" type="text" placeholder="deepseek-chat" />
+    </div>
+    <div class="config-tip">
+      在 platform.deepseek.com 注册并创建 API Key。
+      Key 仅保存在本机配置文件中，不会上传。也可以不填写，改用环境变量 DEEPSEEK_API_KEY。
+    </div>
+    <div class="config-title">语音朗读（MiniMax）</div>
+    <div class="config-field config-checkbox">
+      <label><input type="checkbox" id="config-tts-enabled" /> 启用语音朗读（点击消息喇叭按钮朗读）</label>
+    </div>
+    <div class="config-field">
+      <label>MiniMax API Key</label>
+      <input id="config-tts-apikey" type="password" placeholder="MiniMax API Key" autocomplete="off" />
+    </div>
+    <div class="config-field">
+      <label>音色 ID</label>
+      <input id="config-tts-voiceid" type="text" placeholder="如 furina" />
+    </div>
+    <div class="config-field">
+      <label>合成模型</label>
+      <select id="config-tts-model">
+        <option value="speech-2.8-hd">speech-2.8-hd（高保真）</option>
+        <option value="speech-2.8-turbo">speech-2.8-turbo（极速）</option>
+      </select>
+    </div>
+    <div class="config-tip">
+      先在 MiniMax 平台创建 API Key 并用 voice/minimax-furina-voice.mjs 克隆音色，
+      把音色 ID 填到这里。Key 仅保存在本机，也可以改用环境变量 MINIMAX_API_KEY。
+    </div>
+    <div class="config-buttons">
+      <button id="chat-config-back">返回</button>
+      <button id="chat-config-save">保存</button>
+    </div>
+  </div>
+
+  <!-- ================= 独立全屏聊天视图（?mode=full） ================= -->
+  <div id="full-app" class="hidden">
+    <header id="full-topbar">
+      <div class="full-brand">✦ 芙宁娜 <span class="full-sub">DeepSeek · 全屏聊天</span></div>
+      <div class="full-win-controls">
+        <button id="full-min" title="最小化">─</button>
+        <button id="full-max" title="最大化">□</button>
+        <button id="full-close" title="关闭">✕</button>
+      </div>
+    </header>
+    <main id="full-main">
+      <section id="full-chat">
+        <div id="full-chat-panel">
+          <div class="chat-header">
+            <span class="chat-title">芙宁娜 · 聊天</span>
+            <div class="chat-actions">
+              <button id="full-chat-clear" title="清空对话">清空</button>
+              <button id="full-chat-config" title="设置">⚙ 设置</button>
+            </div>
+          </div>
+          <div id="full-chat-messages"></div>
+          <div class="chat-input-row">
+            <textarea id="full-chat-input" rows="1" placeholder="和芙宁娜说点什么…（Enter 发送 / Shift+Enter 换行）"></textarea>
+            <button id="full-chat-send">发送</button>
+          </div>
+        </div>
+        <div id="full-chat-config-view" class="hidden">
+          <button id="full-config-close" title="关闭设置">✕</button>
+          <div class="config-title">DeepSeek 设置</div>
+          <div class="config-field">
+            <label>API Key</label>
+            <input id="full-config-apikey" type="password" placeholder="sk-..." autocomplete="off" />
+          </div>
+          <div class="config-field">
+            <label>接口地址</label>
+            <input id="full-config-baseurl" type="text" placeholder="https://api.deepseek.com" />
+          </div>
+          <div class="config-field">
+            <label>模型</label>
+            <input id="full-config-model" type="text" placeholder="deepseek-chat" />
+          </div>
+          <div class="config-tip">
+            在 platform.deepseek.com 注册并创建 API Key。也可以不填写，改用环境变量 DEEPSEEK_API_KEY。
+          </div>
+          <div class="config-title">语音朗读（MiniMax）</div>
+          <div class="config-field config-checkbox">
+            <label><input type="checkbox" id="full-config-tts-enabled" /> 启用语音朗读（点击消息喇叭按钮朗读）</label>
+          </div>
+          <div class="config-field">
+            <label>MiniMax API Key</label>
+            <input id="full-config-tts-apikey" type="password" placeholder="MiniMax API Key" autocomplete="off" />
+          </div>
+          <div class="config-field">
+            <label>音色 ID</label>
+            <input id="full-config-tts-voiceid" type="text" placeholder="如 furina" />
+          </div>
+          <div class="config-field">
+            <label>合成模型</label>
+            <select id="full-config-tts-model">
+              <option value="speech-2.8-hd">speech-2.8-hd（高保真）</option>
+              <option value="speech-2.8-turbo">speech-2.8-turbo（极速）</option>
+            </select>
+          </div>
+          <div class="config-tip">
+            先在 MiniMax 平台创建 API Key 并用 voice/minimax-furina-voice.mjs 克隆音色。
+          </div>
+          <div class="config-buttons">
+            <button id="full-chat-config-back">返回</button>
+            <button id="full-chat-config-save">保存</button>
+          </div>
+        </div>
+      </section>
+      <aside id="full-model">
+        <div class="full-model-title">芙宁娜 · 不休独舞</div>
+        <canvas id="full-canvas"></canvas>
+      </aside>
+    </main>
+  </div>
   <script type="module" src="./main.ts"></script>
 </body>
 </html>
