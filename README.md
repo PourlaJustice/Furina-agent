@@ -47,7 +47,7 @@ src/renderer/public/models/furina/
 
 ### 2. 准备 Cubism Core（必需）
 
-Live2D 官方 SDK（专有许可），从 Cyrene-Agent 仓库或 Live2D 官网获取
+Live2D 官方 SDK（专有许可），从 Live2D 官网获取
 `live2dcubismcore.min.js`，放入：
 
 ```text
