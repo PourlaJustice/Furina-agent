@@ -28,3 +28,12 @@ Thumbs.db
 # voice assets: copyrighted reference clips and generated outputs
 voice/ref/
 voice/out/
+
+# Rust 构建产物
+native/furina-screenshot/target/
+
+# 截图输出
+screenshots/
+
+# Rust 截图助手构建产物
+resources/bin/

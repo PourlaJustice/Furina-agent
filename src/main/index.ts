@@ -11,6 +11,7 @@ import { runLangGraph } from './ai/graph';
 import { initLangChainEmbeddings } from './ai/retriever';
 import { initTasks } from './tasks';
 import { initMcp, mcpManager } from './ai/mcp';
+import { screenshotHelper } from './screenshot';
 import { clearKnowledge, getKnowledgeStatus, importKnowledgePath, initKnowledgeBase, retrieveKnowledge } from './rag';
 import type { RagResult } from './rag';
 
@@ -507,6 +508,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   void mcpManager.disconnectAll();
+  screenshotHelper.stop();
 });
 
 app.on('window-all-closed', () => {

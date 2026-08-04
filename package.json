@@ -9,7 +9,9 @@
     "build:renderer": "vite build",
     "build": "npm run build:main && npm run build:preload && npm run build:renderer",
     "dev": "npm run build:main && npm run build:preload && concurrently \"vite\" \"cross-env VITE_DEV=1 electron .\"",
-    "start": "electron ."
+    "start": "electron .",
+    "build:screenshot-helper": "node scripts/build-screenshot-helper.mjs",
+    "verify:screenshot-helper": "node scripts/verify-screenshot-helper.mjs"
   },
   "engines": {
     "node": ">=24 <25",

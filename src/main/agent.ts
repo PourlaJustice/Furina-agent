@@ -9,6 +9,7 @@ import { parseFileText } from './doc-parsers';
 import { addReminder, addTodo, cancelReminder, completeTodo, deleteTodo, listReminders, listTodos } from './tasks';
 import { getWeather } from './weather';
 import { mcpManager } from './ai/mcp';
+import { screenshotTool } from './screenshot';
 
 // ---------- 工具定义 ----------
 
@@ -344,6 +345,29 @@ export const AGENT_TOOLS: ToolDef[] = [
     },
     execute: async (args) => getWeather(String(args.city ?? ''), String(args.when ?? '')),
   },
+  {
+    name: 'screen_shot',
+    description: '截取屏幕指定区域或指定窗口，保存为 PNG 图片并返回保存路径。region 与 window_title 二选一，都不给则截整个主屏幕',
+    parameters: {
+      type: 'object',
+      properties: {
+        region: {
+          type: 'object',
+          description: '可选：{x, y, w, h} 屏幕坐标区域',
+          properties: {
+            x: { type: 'number' },
+            y: { type: 'number' },
+            w: { type: 'number' },
+            h: { type: 'number' },
+          },
+        },
+        window_title: { type: 'string', description: '可选：要截取的窗口标题（如 记事本）' },
+        save_path: { type: 'string', description: '可选：保存路径，默认保存到桌面 furina-screenshots 文件夹' },
+      },
+    },
+    dangerous: true,
+    execute: async (args) => screenshotTool(String(args.window_title ?? ''), args.region, String(args.save_path ?? '')),
+  },
 ];
 
 // ---------- 工具意图检测（保留普通聊天的流式体验） ----------
@@ -355,6 +379,7 @@ const TOOL_KEYWORDS = [
   '邮件', '浏览', '帮我弄', '帮我做', '帮忙', '计算', '算一下', '帮我算',
   '提醒', '待办', '日程', '备忘', '闹钟', '记一下', '事项', '别忘了',
   '气温', '预报', '下雨', '刮风', '台风',
+  '截图', '屏幕', '截屏', '看看画面',
 ];
 
 export function isToolIntent(text: string): boolean {
@@ -440,6 +465,7 @@ export function toolDesc(name: string): string {
     list_reminders: '查看提醒',
     cancel_reminder: '取消提醒',
     get_weather: '查询天气',
+    screen_shot: '屏幕截图',
   };
   return map[name] ?? name;
 }
