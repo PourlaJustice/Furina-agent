@@ -61,3 +61,26 @@ export interface TtsSpeakResult {
   /** 可选错误信息（不阻塞文字回复） */
   error?: string;
 }
+
+/** 记忆信息（设置界面展示用） */
+export interface MemoryInfo {
+  name?: string;
+  age?: string;
+  occupation?: string;
+  interests: string[];
+  dislikes: string[];
+  topics: string[];
+  goals: string[];
+  l2Count: number;
+  relationCount: number;
+  recentL2: Array<{ content: string; category: string; createdAt: number }>;
+}
+
+/** 知识库状态（设置界面展示用） */
+export interface KnowledgeStatus {
+  files: Array<{ name: string; chunkCount: number }>;
+  chunkCount: number;
+  embedding: "idle" | "loading" | "ready" | "failed";
+  provider: "local" | "minimax" | "none";
+  worldbookCount: number;
+}

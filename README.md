@@ -9,11 +9,11 @@
 - 鼠标跟随（眼珠与头部转向）
 - 单击随机动作 / 双击随机表情 / 拖动窗口
 - 高 DPI 渲染 + 特写模式 + 遮罩分块修复
-- 语音朗读（阶段 4，MiniMax TTS）：
+- 语音朗读（MiniMax TTS）：
   - 回复按句子切分，边生成边朗读，与文字显示同步
   - 朗读期间 Live2D 口型同步
   - 支持 MiniMax 音色克隆（voice/minimax-furina-voice.mjs）
-- DeepSeek AI 聊天（阶段 3）：
+- DeepSeek AI 聊天：
   - 点击右上角“聊”按钮打开聊天面板
   - 流式回复实时渲染 Markdown（代码块 / 列表 / 表格）
   - 回复时芙宁娜嘴型同步，说话时开口型变化
@@ -83,7 +83,7 @@ API Key 获取：<https://platform.deepseek.com>（注册后创建）。配置�
 | 接口地址 | `https://api.deepseek.com` | 一般不用改 |
 | 模型 | `deepseek-chat` | 可换 `deepseek-reasoner` |
 
-## 聊天架构（阶段 3）
+## 聊天架构
 
 ```
 渲染进程 (chat.ts)               主进程 (deepseek.ts)

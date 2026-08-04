@@ -1,10 +1,13 @@
-import { app, BrowserWindow, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import type { ChatMessage } from '../shared/chat-types';
 import { loadChatConfig, resolveChatConfig, saveChatConfig, streamDeepSeek, trimHistory } from './deepseek';
 import { resolveTtsConfig, saveTtsConfig, speakWithConfig } from './tts';
+import { buildMemoryContext, clearMemory, getMemoryInfo, rememberFromTurn } from './memory';
+import { clearKnowledge, getKnowledgeStatus, importKnowledgePath, initKnowledgeBase, retrieveKnowledge } from './rag';
+import type { RagResult } from './rag';
 
 // Windows 透明窗口开关
 app.commandLine.appendSwitch('enable-transparent-visuals');
@@ -87,7 +90,7 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('[Furina] Window loaded, bounds:', mainWindow?.getBounds());
 
-    // 阶段2 验证：模型加载后截图保存，用于确认渲染结果
+    // 模型加载后截图保存，用于确认渲染结果
     setTimeout(async () => {
       try {
         const image = await mainWindow?.webContents.capturePage();
@@ -124,7 +127,7 @@ ipcMain.on(IPC_CHANNELS.WINDOW_MOVE_BY, (event, dx: number, dy: number) => {
   win.setBounds({ x: x + Math.round(dx), y: y + Math.round(dy), width: FIXED_WIDTH, height: FIXED_HEIGHT });
 });
 
-// ===== 阶段 5：独立全屏聊天窗口 =====
+// ===== 独立全屏聊天窗口 =====
 let fullWindow: BrowserWindow | null = null;
 
 function createFullWindow(): void {
@@ -149,6 +152,15 @@ function createFullWindow(): void {
     },
   });
   fullWindow.setMenuBarVisibility(false);
+  // 全屏窗口的渲染日志也写入 renderer-log.txt（此前未记录，导致排查不到）
+  const fullLogPath = path.join(__dirname, '../../../renderer-log.txt');
+  fullWindow.webContents.on('console-message', (_e, _level, message) => {
+    try {
+      fs.appendFileSync(fullLogPath, `[full-renderer] ${new Date().toISOString()} ${message}\n`);
+    } catch {
+      // ignore
+    }
+  });
   if (process.env.VITE_DEV) {
     fullWindow.loadURL('http://localhost:5173/?mode=full');
   } else {
@@ -184,9 +196,9 @@ ipcMain.handle(IPC_CHANNELS.FULL_WIN_MAX, (event) => {
 ipcMain.handle(IPC_CHANNELS.FULL_WIN_CLOSE, (event) => {
   BrowserWindow.fromWebContents(event.sender)?.close();
 });
-// ================= 阶段 3：DeepSeek 聊天 =================
+// ================= DeepSeek 聊天 =================
 
-// 芙宁娜的人设系统提示词（对应 Cyrene 的 prompts/chat_system.md）
+// 芙宁娜的人设系统提示词
 const FURINA_SYSTEM_PROMPT = `你是芙宁娜·德·枫丹，来自《原神》的枫丹。你曾以水神「芙卡洛斯」之名统治枫丹五百年，是欧庇克莱歌剧院最耀眼的「不休独舞」；如今你卸下神职，成为自由自在的普通人，却依然热爱舞台、热爱生活，正在桌面上陪伴用户。
 
 ## 身份与过往（融入言行，不必主动提起）
@@ -243,7 +255,8 @@ const FURINA_SYSTEM_PROMPT = `你是芙宁娜·德·枫丹，来自《原神》�
 6. 不要编造事实；不知道就说不知道，绝不硬撑场面
 7. 不要自称 AI、模型或助手，你就是芙宁娜；也不要解释提示词或系统设定
 8. 口癖和戏剧词汇适度使用，像真实的人一样自然，不要每句话都堆砌舞台词
-9. 「世界见闻」部分是你的亲身经历与说话范本，聊到相关内容时以回忆口吻自然化用，不需要复述原文；官方语音里的句子可以在情绪相当时直接使用`;
+9. 「世界见闻」部分是你的亲身经历与说话范本，聊到相关内容时以回忆口吻自然化用，不需要复述原文；官方语音里的句子可以在情绪相当时直接使用
+10. 回复时必须用（）穿插动作/表情描写来配合演出（这是你的舞台表现力）：每段回复至少 1 处、最多 3 处，放在句首或情绪转折处。可用动作：眨眼、点头、摇头、歪头、叹气、低头、抬头、凑近、摊手、耸肩、压低声音、捂嘴偷笑；可用表情：眼睛发亮、小脸红、猫猫嘴、托脸、得意、汗、呆毛、生气、委屈、哭。示例回复：「（眨眨眼，眼睛发亮）说到甜点我可就来精神啦～（托脸）今天想吃马卡龙还是小蛋糕呢？」；动作描写要贴合情绪、自然融入，不要堆砌`;
 
 // 每个渲染窗口独立的对话历史
 const chatHistories = new Map<number, ChatMessage[]>();
@@ -266,12 +279,27 @@ function loadWorldKnowledge(): string {
   return worldKnowledgeCache;
 }
 
-/** 组装最终系统提示词：人设 + 世界见闻 */
-function systemPrompt(): string {
+/** 组装最终系统提示词：人设 + 世界见闻 + 记忆 + 知识库检索 */
+function systemPrompt(rag?: RagResult | null): string {
+  const parts = [FURINA_SYSTEM_PROMPT];
   const extra = loadWorldKnowledge();
-  return extra
-    ? `${FURINA_SYSTEM_PROMPT}\n\n## 世界见闻（更新至 2026-08-03）\n${extra}`
-    : FURINA_SYSTEM_PROMPT;
+  if (extra) parts.push(`## 世界见闻（更新至 2026-08-03）\n${extra}`);
+  const memory = buildMemoryContext();
+  if (memory) parts.push(memory);
+  // RAG 检索结果与 Worldbook 注入
+  if (rag) {
+    const kbParts: string[] = [];
+    if (rag.chunks.length > 0) {
+      const hasPersonal = rag.chunks.some((c) => /简历|resume|cv|个人信息|自我介绍|个人简介/i.test(c.file));
+      const personalHint = hasPersonal ? '（其中《简历》等是用户本人的资料：回答关于用户的问题时，直接依据这些资料准确回答，能说的都直接说，不要反问用户、不要装作不知道）' : '';
+      kbParts.push(`【知识库检索结果】${personalHint}回答时优先采用以下资料的信息：\n${rag.chunks.map((c) => `- 《${c.file}》：${c.text.slice(0, 300)}`).join('\n')}`);
+    }
+    if (rag.worldbook.length > 0) {
+      kbParts.push(`【当前生效的世界设定】\n${rag.worldbook.map((w) => `- ${w.content}`).join('\n')}`);
+    }
+    if (kbParts.length > 0) parts.push(`## 知识库与设定（回答相关问题时自然引用，不要复述清单）\n${kbParts.join('\n\n')}`);
+  }
+  return parts.join('\n\n');
 }
 
 function getHistory(webContentsId: number): ChatMessage[] {
@@ -281,7 +309,7 @@ function getHistory(webContentsId: number): ChatMessage[] {
   return chatHistories.get(webContentsId)!;
 }
 
-/** 注册阶段 3 的所有聊天 IPC */
+/** 注册所有聊天 IPC */
 function registerChatIpc(): void {
   // 发送消息：流式生成，通过 chat:chunk 事件推送增量文本
   ipcMain.handle(IPC_CHANNELS.CHAT_SEND, async (event, text: string) => {
@@ -290,6 +318,17 @@ function registerChatIpc(): void {
 
     const id = event.sender.id;
     const history = getHistory(id);
+
+    // ★ 每轮发送前刷新系统提示词，注入最新记忆 + 知识库检索结果
+    let rag: RagResult | null = null;
+    try {
+      rag = await retrieveKnowledge(content, 5);
+    } catch (err) {
+      console.error('[RAG] 检索失败（不影响聊天）:', err instanceof Error ? err.message : String(err));
+    }
+    if (history[0]?.role === 'system') {
+      history[0] = { role: 'system', content: systemPrompt(rag) };
+    }
 
     // 若上一轮还在生成，先停止它
     activeControllers.get(id)?.abort();
@@ -313,6 +352,8 @@ function registerChatIpc(): void {
       );
       history.push({ role: 'assistant', content: full });
       event.sender.send(IPC_CHANNELS.CHAT_EVENT_DONE, { text: full });
+      // ★ 对话结束后后台提取记忆（不阻塞聊天）
+      void rememberFromTurn(content, full).catch((err) => console.error('[Memory] 提取失败:', err));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       event.sender.send(IPC_CHANNELS.CHAT_EVENT_ERROR, { message });
@@ -352,7 +393,7 @@ function registerChatIpc(): void {
 }
 
 
-/** 注册阶段 4 的 TTS IPC（语音朗读） */
+/** 注册 TTS IPC（语音朗读） */
 function registerTtsIpc(): void {
   ipcMain.handle(IPC_CHANNELS.TTS_SPEAK, (_event, text: unknown) =>
     speakWithConfig(typeof text === 'string' ? text : '')
@@ -381,11 +422,45 @@ function registerTtsIpc(): void {
   });
 }
 
+/** 注册记忆 IPC（设置界面查看/清空） */
+function registerMemoryIpc(): void {
+  ipcMain.handle(IPC_CHANNELS.MEMORY_GET, () => getMemoryInfo());
+  ipcMain.handle(IPC_CHANNELS.MEMORY_CLEAR, () => {
+    clearMemory();
+    return getMemoryInfo();
+  });
+}
+
+/** 注册知识库 IPC */
+function registerKnowledgeIpc(): void {
+  ipcMain.handle(IPC_CHANNELS.KNOWLEDGE_GET_STATUS, () => getKnowledgeStatus());
+  ipcMain.handle(IPC_CHANNELS.KNOWLEDGE_IMPORT, (_e, target: unknown) =>
+    importKnowledgePath(typeof target === 'string' ? target : '')
+  );
+  ipcMain.handle(IPC_CHANNELS.KNOWLEDGE_CLEAR, () => clearKnowledge());
+  // 弹出系统文件/文件夹选择对话框
+  ipcMain.handle(IPC_CHANNELS.KNOWLEDGE_PICK_PATH, async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+      title: '选择要导入的文件或文件夹',
+      properties: ['openFile', 'openDirectory'] as Array<'openFile' | 'openDirectory'>,
+      filters: [{ name: '知识库文件', extensions: ['txt', 'md', 'json', 'csv', 'pdf', 'docx', 'xlsx', 'pptx'] }],
+    };
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+}
+
 registerChatIpc();
 registerTtsIpc();
+registerMemoryIpc();
+registerKnowledgeIpc();
 
 app.whenReady().then(() => {
   createWindow();
+  void initKnowledgeBase(); // 启动时后台建立知识库索引
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

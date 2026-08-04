@@ -1,4 +1,4 @@
-// 阶段 3：DeepSeek 流式聊天客户端
+// DeepSeek 流式聊天客户端
 //
 // DeepSeek 提供 OpenAI 兼容的 Chat Completions 接口，因此不需要第三方 SDK，
 // 直接用 Node 24 内置的 fetch 解析 SSE（Server-Sent Events）流即可。

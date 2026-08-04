@@ -44,6 +44,8 @@ async function initFullMode(): Promise<void> {
       // 全屏模式模型与聊天分栏显示，无需避让
       onOpenChange: () => { /* noop */ },
       onSpeakingChange: (speaking) => manager.setSpeaking(speaking),
+      onAction: (action) => manager.playConversationAction(action),
+      onActionReset: () => manager.clearActionQueue(),
     },
     "full-",
   );
@@ -90,6 +92,8 @@ async function initPetMode(): Promise<void> {
   const chatPanel = new ChatPanel({
     onOpenChange: (open) => manager.setChatMode(open),
     onSpeakingChange: (speaking) => manager.setSpeaking(speaking),
+    onAction: (action) => manager.playConversationAction(action),
+    onActionReset: () => manager.clearActionQueue(),
   });
   window.furinaChat = chatPanel;
 

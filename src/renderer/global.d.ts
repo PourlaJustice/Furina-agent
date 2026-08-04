@@ -1,6 +1,6 @@
 export {};
 
-import type { ChatConfig } from "../shared/chat-types";
+import type { ChatConfig, KnowledgeStatus, MemoryInfo } from "../shared/chat-types";
 
 declare global {
   interface Window {
@@ -23,6 +23,16 @@ declare global {
         onChunk: (cb: (payload: { text: string }) => void) => () => void;
         onDone: (cb: (payload: { text: string }) => void) => () => void;
         onError: (cb: (payload: { message: string }) => void) => () => void;
+      };
+      memory: {
+        get: () => Promise<MemoryInfo>;
+        clear: () => Promise<MemoryInfo>;
+      };
+      knowledge: {
+        getStatus: () => Promise<KnowledgeStatus>;
+        importPath: (target: string) => Promise<{ imported: number; chunks: number; skipped: string[] }>;
+        pickPath: () => Promise<string | null>;
+        clear: () => Promise<KnowledgeStatus>;
       };
     };
   }

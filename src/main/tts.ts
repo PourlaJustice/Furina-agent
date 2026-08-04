@@ -1,4 +1,4 @@
-// 阶段 4：MiniMax TTS 语音合成（主进程）
+// MiniMax TTS 语音合成（主进程）
 //
 // 依赖 Node 22+ 内置的 fetch 与 WebSocket，无需安装第三方包。
 // 配置保存于 userData/tts-config.json；apiKey 可回退到环境变量 MINIMAX_API_KEY。

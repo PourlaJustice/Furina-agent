@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
-import type { ChatConfig, TtsConfig, TtsSpeakResult } from '../shared/chat-types';
+import type { ChatConfig, KnowledgeStatus, MemoryInfo, TtsConfig, TtsSpeakResult } from '../shared/chat-types';
 
 // 通过 contextBridge 安全暴露 API 给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -27,7 +27,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     closeFullChat: () => ipcRenderer.invoke(IPC_CHANNELS.FULL_CHAT_CLOSE),
   },
 
-  // 阶段 3：DeepSeek 聊天
+  // DeepSeek 聊天
   chat: {
     send: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.CHAT_SEND, text),
     stop: () => ipcRenderer.invoke(IPC_CHANNELS.CHAT_STOP),
@@ -40,14 +40,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onError: (cb: (payload: { message: string }) => void) => subscribe(IPC_CHANNELS.CHAT_EVENT_ERROR, cb),
   },
 
-  // 阶段 4：MiniMax 语音朗读
+  // MiniMax 语音朗读
   tts: {
     speak: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.TTS_SPEAK, text) as Promise<TtsSpeakResult>,
     getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.TTS_CONFIG_GET) as Promise<TtsConfig>,
     setConfig: (patch: TtsConfig) => ipcRenderer.invoke(IPC_CHANNELS.TTS_CONFIG_SET, patch) as Promise<TtsConfig>,
   },
 
-  // 阶段 5：独立聊天窗口顶栏控制（仅全屏窗口使用）
+  // 三层记忆系统
+  memory: {
+    get: () => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GET) as Promise<MemoryInfo>,
+    clear: () => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_CLEAR),
+  },
+
+  // RAG 知识库
+  knowledge: {
+    getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.KNOWLEDGE_GET_STATUS) as Promise<KnowledgeStatus>,
+    importPath: (target: string) => ipcRenderer.invoke(IPC_CHANNELS.KNOWLEDGE_IMPORT, target) as Promise<{ imported: number; chunks: number; skipped: string[] }>,
+    pickPath: () => ipcRenderer.invoke(IPC_CHANNELS.KNOWLEDGE_PICK_PATH) as Promise<string | null>,
+    clear: () => ipcRenderer.invoke(IPC_CHANNELS.KNOWLEDGE_CLEAR) as Promise<KnowledgeStatus>,
+  },
+
+  // 独立聊天窗口顶栏控制（仅全屏窗口使用）
   fullwin: {
     min: () => ipcRenderer.invoke(IPC_CHANNELS.FULL_WIN_MIN),
     max: () => ipcRenderer.invoke(IPC_CHANNELS.FULL_WIN_MAX),

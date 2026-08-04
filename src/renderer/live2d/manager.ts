@@ -1,5 +1,6 @@
 import * as PIXI from "pixi.js";
 import { Live2DModel } from "pixi-live2d-display/cubism4";
+import type { ConversationAction } from "./actions";
 
 // 芙宁娜模型的动作列表（motions/ 目录）
 // 待机动画含 Param128(0→900) 疑似导致无限放大，点击动作改用有面部动画的摊手
@@ -14,8 +15,12 @@ function randomOf<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
- * Live2D 管理器 — 对应 Cyrene 的 src/renderer/live2d/manager.ts
+ * Live2D 管理器
  * 负责：创建 PixiJS 透明画布、加载 Cubism 模型、自适应缩放、
  *       点击/双击/拖拽交互、视线跟随、空闲动作、口型同步、表情切换
  */
@@ -31,6 +36,21 @@ export class Live2DManager {
   private chatMode = false;
   private speakingTimer: ReturnType<typeof setInterval> | null = null;
   private baseBounds: PIXI.Rectangle | null = null;
+  /** 手势动画结束时间（期间暂停头部鼠标跟随，避免互相覆盖） */
+  private gestureUntil = 0;
+
+  /** 模型默认部件透明度（加载时快照，动作结束后恢复，避免残留隐藏/显示状态） */
+  private defaultOpacities: number[] | null = null;
+  /** 对话动作队列：串行播放，一次只做一个，避免动作叠加（“三只手”） */
+  private actionQueue: ConversationAction[] = [];
+  private actionPlaying = false;
+  /** 等待动作完成的地方（动作队列） */
+  private motionFinishWaiters: Array<() => void> = [];
+  /** 动作队列代次：重新播放（朗读）时递增，强制中断旧队列 */
+  private actionEpoch = 0;
+  /** 动作播放完成时是否需要恢复默认姿态（部件透明度 + 中性表情 + 待机动画） */
+  private resetOnMotionFinish = false;
+
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -59,6 +79,7 @@ export class Live2DManager {
     this.app.stage.addChild(this.model);
 
     this.fixMaskCount();
+    this.snapshotDefaultOpacities();
     this.baseBounds = this.model.getLocalBounds();
     this.fitToWindow(1.9); // 特写模式：脸部放大，接近面捕软件视角
     this.setupHitArea();
@@ -111,6 +132,34 @@ export class Live2DManager {
     }
 
     console.log("[Furina] Live2D model loaded:", modelPath);
+
+    // ★ 配置动作完成监听：一次性动作播完后恢复默认姿态（部件/表情/待机），
+    // 并唤醒动作队列继续播放下一个动作
+    try {
+      const mm = (this.model as unknown as {
+        internalModel?: {
+          motionManager?: {
+            groups?: { idle?: string };
+            on?: (e: string, cb: () => void) => void;
+          };
+        };
+      })?.internalModel?.motionManager;
+      if (mm?.groups) mm.groups.idle = "Idle"; // 让库在动作完成后自动回到待机组
+      mm?.on?.("motionFinish", () => {
+        console.log("[Furina] motionFinish fired");
+        const waiters = this.motionFinishWaiters.splice(0);
+        for (const fn of waiters) fn();
+        if (this.resetOnMotionFinish) {
+          this.resetOnMotionFinish = false;
+          this.restoreDefaultOpacities();
+          this.resetExpressionNeutral();
+          // 等库内部把动作优先级归零后再回待机，避免被拒绝
+          setTimeout(() => this.resumeIdle(), 0);
+        }
+      });
+    } catch {
+      // 库版本差异时忽略，不影响主流程
+    }
 
     // ★ 最后播放待机动画（必须在水印隐藏之后，否则会被 stopAllMotions 停掉）
     this.playMotion("待机动画");
@@ -230,8 +279,11 @@ export class Live2DManager {
       // 幅度调小更自然：头 ±6/4 度，眼珠 ±0.35/0.2
       core.setParameterValueById?.("ParamEyeBallX", currentX * 0.35);
       core.setParameterValueById?.("ParamEyeBallY", currentY * 0.2);
-      core.setParameterValueById?.("ParamAngleX", currentX * 6);
-      core.setParameterValueById?.("ParamAngleY", currentY * 4);
+      // 手势动画期间暂停头部跟随，避免参数互相覆盖
+      if (performance.now() > this.gestureUntil) {
+        core.setParameterValueById?.("ParamAngleX", currentX * 6);
+        core.setParameterValueById?.("ParamAngleY", currentY * 4);
+      }
     });
   }
 
@@ -540,8 +592,206 @@ export class Live2DManager {
     }
   }
 
-  /** 播放指定名称的动作 */
-  playMotion(name: string): void {
+  /**
+   * ★ 对话动作匹配：根据聊天中的动作描述（如（生气）（摊手））触发表情/动作/小动作。
+   * 动作进入队列串行播放：一次只做一个，做完恢复原始姿态再做下一个，避免叠加。
+   */
+  playConversationAction(action: ConversationAction | null): void {
+    if (!action) return;
+    // 动作严格跟随语音/文本触发：不做防重复过滤，保证每次重播动作一致
+    console.log("[Furina] conversation action queued:", action.label);
+    this.actionQueue.push(action);
+    void this.drainActionQueue();
+  }
+
+  /** 语音重新播放时清空待播放的动作队列，让动作从头开始 */
+  clearActionQueue(): void {
+    // 递增代次，让正在跑的旧队列尽快让位
+    this.actionEpoch += 1;
+    this.actionQueue.length = 0;
+  }
+
+  /** 串行执行动作队列（一次一个，动作之间留间隔） */
+  private async drainActionQueue(): Promise<void> {
+    if (this.actionPlaying) return;
+    this.actionPlaying = true;
+    try {
+      const epoch = this.actionEpoch;
+      while (this.actionQueue.length > 0) {
+        // 朗读重新开始时，旧队列立即让位
+        if (epoch !== this.actionEpoch) break;
+        const action = this.actionQueue.shift();
+        if (!action) continue;
+        await this.playSingleAction(action);
+        // 两个动作之间留出间隔，让动作“慢慢来”
+        await sleep(600);
+      }
+    } finally {
+      this.actionPlaying = false;
+      // 若清空后有新动作到来，自动继续
+      if (this.actionQueue.length > 0) void this.drainActionQueue();
+    }
+  }
+
+  /** 播放单个对话动作：表情→动作（等待完成）→恢复原始姿态 */
+  private async playSingleAction(action: ConversationAction): Promise<void> {
+    if (action.motion) {
+      // 动作本身会驱动身体，手势就不重复叠加
+      if (action.expression) this.setExpression(action.expression);
+      await this.playMotionAndWait(action.motion);
+    } else if (action.expression) {
+      this.setExpression(action.expression);
+      // 表情停留约 2.2 秒后恢复原始姿态（部件透明度 + 中性表情 + 待机）
+      await sleep(2200);
+      this.restoreDefaultOpacities();
+      this.resetExpressionNeutral();
+      this.resumeIdle();
+    } else if (action.gesture) {
+      await this.playGesture(action.gesture);
+    }
+  }
+
+  /** 播放一次性动作并等待其完成（超时兜底），完成后由 motionFinish 监听统一复位 */
+  private playMotionAndWait(name: string, timeoutMs = 6000): Promise<void> {
+    return new Promise((resolve) => {
+      const onFinish = (): void => {
+        clearTimeout(timer);
+        const i = this.motionFinishWaiters.indexOf(onFinish);
+        if (i >= 0) this.motionFinishWaiters.splice(i, 1);
+        resolve();
+      };
+      const timer = setTimeout(() => onFinish(), timeoutMs);
+      this.motionFinishWaiters.push(onFinish);
+      this.resetOnMotionFinish = true;
+      this.playMotion(name);
+    });
+  }
+
+  /** 恢复中性表情（清除生气/脸红/道具表情等残留） */
+  private resetExpressionNeutral(): void {
+    try {
+      const em = (this.model as unknown as {
+        internalModel?: { motionManager?: { expressionManager?: { resetExpression?: () => void } } };
+      })?.internalModel?.motionManager?.expressionManager;
+      em?.resetExpression?.();
+    } catch {
+      // ignore
+    }
+  }
+
+  /** 快照模型默认部件透明度（加载时、未播放任何动作前） */
+  private snapshotDefaultOpacities(): void {
+    const opacities = (this.model as unknown as {
+      internalModel?: { coreModel?: { _model?: { drawables?: { opacities?: number[] } } } };
+    })?.internalModel?.coreModel?._model?.drawables?.opacities;
+    if (opacities) this.defaultOpacities = Array.from(opacities);
+  }
+
+  /** 恢复部件默认透明度（清除动作残留的隐藏/显示状态） */
+  private restoreDefaultOpacities(): void {
+    const opacities = (this.model as unknown as {
+      internalModel?: { coreModel?: { _model?: { drawables?: { opacities?: number[] } } } };
+    })?.internalModel?.coreModel?._model?.drawables?.opacities;
+    if (!opacities || !this.defaultOpacities) return;
+    const len = Math.min(opacities.length, this.defaultOpacities.length);
+    for (let i = 0; i < len; i++) opacities[i] = this.defaultOpacities[i];
+  }
+
+  /** 动作结束后回到待机动画，让模型恢复自然姿态（避免停在动作最后一帧） */
+  private resumeIdle(): void {
+    const internal = (this.model as unknown as {
+      internalModel?: { motionManager?: { definitions?: Record<string, Array<{ Name?: string }>> } };
+    })?.internalModel;
+    const defs = internal?.motionManager?.definitions;
+    if (!defs || !this.model) return;
+    for (const group of Object.keys(defs)) {
+      const list = defs[group] ?? [];
+      const idx = list.findIndex((m) => m.Name === "待机动画");
+      if (idx >= 0) {
+        void (this.model as unknown as { motion: (g: string, i: number, p?: number) => Promise<boolean> }).motion(group, idx, 1);
+        return;
+      }
+    }
+  }
+
+  /** 程序化小动作：点头/摇头/歪头/眨眼/叹气/低头/抬头/扭头/凑近（模型没有对应动作文件时用参数驱动） */
+  private playGesture(type: "nod" | "shake" | "tilt" | "blink" | "sigh" | "lookDown" | "lookUp" | "turnAway" | "leanIn"): Promise<void> {
+    const core = (this.model as unknown as {
+      internalModel?: {
+        coreModel: { setParameterValueById?: (id: string, v: number) => void };
+      };
+    })?.internalModel?.coreModel;
+    if (!core?.setParameterValueById) return Promise.resolve();
+
+    if (type === "blink") {
+      core.setParameterValueById("ParamEyeLOpen", 0);
+      core.setParameterValueById("ParamEyeROpen", 0);
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          core.setParameterValueById("ParamEyeLOpen", 1);
+          core.setParameterValueById("ParamEyeROpen", 1);
+          resolve();
+        }, 160);
+      });
+    }
+
+    return new Promise((resolve) => {
+      const start = performance.now();
+      const duration =
+        ({ nod: 700, shake: 700, tilt: 900, sigh: 1100, lookDown: 1300, lookUp: 1100, turnAway: 1000, leanIn: 1100 } as Record<string, number>)[type] ?? 800;
+      this.gestureUntil = start + duration + 100;
+      const reset = (): void => {
+        core.setParameterValueById("ParamAngleX", 0);
+        core.setParameterValueById("ParamAngleY", 0);
+        core.setParameterValueById("ParamAngleZ", 0);
+      };
+      const step = (): void => {
+        const t = Math.min(1, (performance.now() - start) / duration);
+        let ax = 0;
+        let ay = 0;
+        let az = 0;
+        switch (type) {
+          case "nod":
+            ax = Math.sin(Math.PI * t) * 12;
+            break;
+          case "shake":
+            ay = Math.sin(t * Math.PI * 2) * 10;
+            break;
+          case "tilt":
+            az = Math.sin(Math.PI * t) * 14;
+            break;
+          case "sigh":
+            ax = t < 0.35 ? (t / 0.35) * 10 : (1 - (t - 0.35) / 0.65) * 10;
+            break;
+          case "lookDown":
+            ax = 12 * (t < 0.7 ? Math.min(1, t / 0.2) : Math.max(0, 1 - (t - 0.7) / 0.3));
+            break;
+          case "lookUp":
+            ax = -10 * (t < 0.7 ? Math.min(1, t / 0.2) : Math.max(0, 1 - (t - 0.7) / 0.3));
+            break;
+          case "turnAway":
+            ay = -14 * (t < 0.7 ? Math.min(1, t / 0.2) : Math.max(0, 1 - (t - 0.7) / 0.3));
+            break;
+          case "leanIn":
+            ax = 8 * Math.min(1, t / 0.25);
+            break;
+        }
+        core.setParameterValueById("ParamAngleX", ax);
+        core.setParameterValueById("ParamAngleY", ay);
+        core.setParameterValueById("ParamAngleZ", az);
+        if (t < 1) {
+          requestAnimationFrame(step);
+        } else {
+          reset();
+          resolve();
+        }
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  /** 播放指定名称的动作（一次性动作播完后由 motionFinish 监听复位到待机姿态） */
+  playMotion(name: string): boolean {
     // ★ 注意：Live2DModel.motion() 的参数是 (分组名, 索引)，不是动作名！
     // 必须按 Name 跨所有分组查找
     const internal = (this.model as unknown as {
@@ -553,34 +803,25 @@ export class Live2DManager {
       };
     })?.internalModel;
     const defs = internal?.motionManager?.definitions;
-    if (!defs || !this.model) return;
+    if (!defs || !this.model) return false;
     for (const group of Object.keys(defs)) {
       const list = defs[group] ?? [];
       const idx = list.findIndex((m) => m.Name === name);
       if (idx >= 0) {
         // ★ 修复动作叠加（"第三只手"）：
-        // 1) 重置所有部件透明度为默认值——清除旧动作残留的隐藏/移动状态
-        // 2) 停止所有动作
-        // 3) 用最高优先级强制播放新动作
-        const coreAny = (this.model as unknown as {
-          internalModel?: {
-            coreModel?: {
-              _model?: { drawables?: { opacities?: number[] } };
-            };
-          };
-        })?.internalModel?.coreModel;
-        const opacities = coreAny?._model?.drawables?.opacities;
-        if (opacities) {
-          for (let i = 0; i < opacities.length; i++) opacities[i] = 1;
-        }
+        // 1) 恢复部件默认透明度——清除旧动作残留的隐藏/显示状态
+        // 2) 停止所有动作（含待机）
+        // 3) 用最高优先级强制播放新动作（播完自动回到待机，见 motionFinish 监听）
+        this.restoreDefaultOpacities();
         internal?.motionManager?.stopAllMotions?.();
         const result = (this.model as unknown as { motion: (g: string, i: number, p?: number) => Promise<boolean> }).motion(group, idx, 3);
         console.log(`[Furina] playMotion("${name}") -> motion("${group}", ${idx}, force)`, result);
-        void result.then((ok) => console.log(`[Furina] motion("${group}", ${idx}) resolved: ${ok}`));
-        return;
+        void result.catch(() => { /* ignore */ });
+        return true;
       }
     }
     console.warn("[Furina] motion not found:", name);
+    return false;
   }
 
   /** 切换表情（expressions 目录中的 .exp3.json 名称） */

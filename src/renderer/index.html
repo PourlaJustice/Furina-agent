@@ -43,45 +43,76 @@
   </div>
   <div id="chat-config-view" class="hidden">
     <button id="config-close" title="关闭设置">✕</button>
-    <div class="config-title">DeepSeek 设置</div>
-    <div class="config-field">
-      <label>API Key</label>
-      <input id="config-apikey" type="password" placeholder="sk-..." autocomplete="off" />
+    <div class="config-tabs">
+      <button class="config-tab active" data-config-tab="chat">对话</button>
+      <button class="config-tab" data-config-tab="voice">语音</button>
+      <button class="config-tab" data-config-tab="memory">记忆</button>
+      <button class="config-tab" data-config-tab="kb">知识库</button>
     </div>
-    <div class="config-field">
-      <label>接口地址</label>
-      <input id="config-baseurl" type="text" placeholder="https://api.deepseek.com" />
+    <div class="config-tab-page" data-config-page="chat">
+      <div class="config-title">DeepSeek 设置</div>
+      <div class="config-field">
+        <label>API Key</label>
+        <input id="config-apikey" type="password" placeholder="sk-..." autocomplete="off" />
+      </div>
+      <div class="config-field">
+        <label>接口地址</label>
+        <input id="config-baseurl" type="text" placeholder="https://api.deepseek.com" />
+      </div>
+      <div class="config-field">
+        <label>模型</label>
+        <input id="config-model" type="text" placeholder="deepseek-chat" />
+      </div>
+      <div class="config-tip">
+        在 platform.deepseek.com 注册并创建 API Key。
+        Key 仅保存在本机配置文件中，不会上传。也可以不填写，改用环境变量 DEEPSEEK_API_KEY。
+      </div>
     </div>
-    <div class="config-field">
-      <label>模型</label>
-      <input id="config-model" type="text" placeholder="deepseek-chat" />
+    <div class="config-tab-page hidden" data-config-page="voice">
+      <div class="config-title">语音朗读（MiniMax）</div>
+      <div class="config-field config-checkbox">
+        <label><input type="checkbox" id="config-tts-enabled" /> 启用语音朗读（点击消息喇叭按钮朗读）</label>
+      </div>
+      <div class="config-field">
+        <label>MiniMax API Key</label>
+        <input id="config-tts-apikey" type="password" placeholder="MiniMax API Key" autocomplete="off" />
+      </div>
+      <div class="config-field">
+        <label>音色 ID</label>
+        <input id="config-tts-voiceid" type="text" placeholder="如 furina" />
+      </div>
+      <div class="config-field">
+        <label>合成模型</label>
+        <select id="config-tts-model">
+          <option value="speech-2.8-hd">speech-2.8-hd（高保真）</option>
+          <option value="speech-2.8-turbo">speech-2.8-turbo（极速）</option>
+        </select>
+      </div>
+      <div class="config-tip">
+        先在 MiniMax 平台创建 API Key 并用 voice/minimax-furina-voice.mjs 克隆音色，
+        把音色 ID 填到这里。Key 仅保存在本机，也可以改用环境变量 MINIMAX_API_KEY。
+      </div>
     </div>
-    <div class="config-tip">
-      在 platform.deepseek.com 注册并创建 API Key。
-      Key 仅保存在本机配置文件中，不会上传。也可以不填写，改用环境变量 DEEPSEEK_API_KEY。
+    <div class="config-tab-page hidden" data-config-page="memory">
+      <div class="config-title">记忆（芙宁娜会长期记住你）</div>
+      <div class="config-tip">芙宁娜会记住你说的名字、喜好和聊过的事，并在之后的对话中想起它们。</div>
+      <div id="chat-memory-box" class="memory-box">
+        <div class="memory-empty">还没有记忆，和芙宁娜聊聊天试试～</div>
+      </div>
+      <button id="chat-memory-clear" class="memory-clear-btn">清空记忆</button>
     </div>
-    <div class="config-title">语音朗读（MiniMax）</div>
-    <div class="config-field config-checkbox">
-      <label><input type="checkbox" id="config-tts-enabled" /> 启用语音朗读（点击消息喇叭按钮朗读）</label>
-    </div>
-    <div class="config-field">
-      <label>MiniMax API Key</label>
-      <input id="config-tts-apikey" type="password" placeholder="MiniMax API Key" autocomplete="off" />
-    </div>
-    <div class="config-field">
-      <label>音色 ID</label>
-      <input id="config-tts-voiceid" type="text" placeholder="如 furina" />
-    </div>
-    <div class="config-field">
-      <label>合成模型</label>
-      <select id="config-tts-model">
-        <option value="speech-2.8-hd">speech-2.8-hd（高保真）</option>
-        <option value="speech-2.8-turbo">speech-2.8-turbo（极速）</option>
-      </select>
-    </div>
-    <div class="config-tip">
-      先在 MiniMax 平台创建 API Key 并用 voice/minimax-furina-voice.mjs 克隆音色，
-      把音色 ID 填到这里。Key 仅保存在本机，也可以改用环境变量 MINIMAX_API_KEY。
+    <div class="config-tab-page hidden" data-config-page="kb">
+      <div class="config-title">知识库（检索回答）</div>
+      <div class="config-tip">导入 txt / md / json / csv / pdf / docx / xlsx / pptx 文件或文件夹，芙宁娜回答时自动检索其中的内容。</div>
+      <div id="chat-kb-status" class="memory-box">初始化中…</div>
+      <div class="kb-path-row">
+        <input id="chat-kb-path" class="kb-path-input" type="text" placeholder="输入路径，或点右侧浏览选择" />
+        <button id="chat-kb-browse" class="kb-browse-btn">浏览…</button>
+      </div>
+      <div class="kb-buttons">
+        <button id="chat-kb-import" class="kb-btn">导入</button>
+        <button id="chat-kb-clear" class="memory-clear-btn">清空知识库</button>
+      </div>
     </div>
     <div class="config-buttons">
       <button id="chat-config-back">返回</button>
@@ -117,43 +148,74 @@
         </div>
         <div id="full-chat-config-view" class="hidden">
           <button id="full-config-close" title="关闭设置">✕</button>
-          <div class="config-title">DeepSeek 设置</div>
-          <div class="config-field">
-            <label>API Key</label>
-            <input id="full-config-apikey" type="password" placeholder="sk-..." autocomplete="off" />
+          <div class="config-tabs">
+            <button class="config-tab active" data-config-tab="chat">对话</button>
+            <button class="config-tab" data-config-tab="voice">语音</button>
+            <button class="config-tab" data-config-tab="memory">记忆</button>
+            <button class="config-tab" data-config-tab="kb">知识库</button>
           </div>
-          <div class="config-field">
-            <label>接口地址</label>
-            <input id="full-config-baseurl" type="text" placeholder="https://api.deepseek.com" />
+          <div class="config-tab-page" data-config-page="chat">
+            <div class="config-title">DeepSeek 设置</div>
+            <div class="config-field">
+              <label>API Key</label>
+              <input id="full-config-apikey" type="password" placeholder="sk-..." autocomplete="off" />
+            </div>
+            <div class="config-field">
+              <label>接口地址</label>
+              <input id="full-config-baseurl" type="text" placeholder="https://api.deepseek.com" />
+            </div>
+            <div class="config-field">
+              <label>模型</label>
+              <input id="full-config-model" type="text" placeholder="deepseek-chat" />
+            </div>
+            <div class="config-tip">
+              在 platform.deepseek.com 注册并创建 API Key。也可以不填写，改用环境变量 DEEPSEEK_API_KEY。
+            </div>
           </div>
-          <div class="config-field">
-            <label>模型</label>
-            <input id="full-config-model" type="text" placeholder="deepseek-chat" />
+          <div class="config-tab-page hidden" data-config-page="voice">
+            <div class="config-title">语音朗读（MiniMax）</div>
+            <div class="config-field config-checkbox">
+              <label><input type="checkbox" id="full-config-tts-enabled" /> 启用语音朗读（点击消息喇叭按钮朗读）</label>
+            </div>
+            <div class="config-field">
+              <label>MiniMax API Key</label>
+              <input id="full-config-tts-apikey" type="password" placeholder="MiniMax API Key" autocomplete="off" />
+            </div>
+            <div class="config-field">
+              <label>音色 ID</label>
+              <input id="full-config-tts-voiceid" type="text" placeholder="如 furina" />
+            </div>
+            <div class="config-field">
+              <label>合成模型</label>
+              <select id="full-config-tts-model">
+                <option value="speech-2.8-hd">speech-2.8-hd（高保真）</option>
+                <option value="speech-2.8-turbo">speech-2.8-turbo（极速）</option>
+              </select>
+            </div>
+            <div class="config-tip">
+              先在 MiniMax 平台创建 API Key 并用 voice/minimax-furina-voice.mjs 克隆音色。
+            </div>
           </div>
-          <div class="config-tip">
-            在 platform.deepseek.com 注册并创建 API Key。也可以不填写，改用环境变量 DEEPSEEK_API_KEY。
+          <div class="config-tab-page hidden" data-config-page="memory">
+            <div class="config-title">记忆（芙宁娜会长期记住你）</div>
+            <div class="config-tip">芙宁娜会记住你说的名字、喜好和聊过的事，并在之后的对话中想起它们。</div>
+            <div id="full-chat-memory-box" class="memory-box">
+              <div class="memory-empty">还没有记忆，和芙宁娜聊聊天试试～</div>
+            </div>
+            <button id="full-chat-memory-clear" class="memory-clear-btn">清空记忆</button>
           </div>
-          <div class="config-title">语音朗读（MiniMax）</div>
-          <div class="config-field config-checkbox">
-            <label><input type="checkbox" id="full-config-tts-enabled" /> 启用语音朗读（点击消息喇叭按钮朗读）</label>
-          </div>
-          <div class="config-field">
-            <label>MiniMax API Key</label>
-            <input id="full-config-tts-apikey" type="password" placeholder="MiniMax API Key" autocomplete="off" />
-          </div>
-          <div class="config-field">
-            <label>音色 ID</label>
-            <input id="full-config-tts-voiceid" type="text" placeholder="如 furina" />
-          </div>
-          <div class="config-field">
-            <label>合成模型</label>
-            <select id="full-config-tts-model">
-              <option value="speech-2.8-hd">speech-2.8-hd（高保真）</option>
-              <option value="speech-2.8-turbo">speech-2.8-turbo（极速）</option>
-            </select>
-          </div>
-          <div class="config-tip">
-            先在 MiniMax 平台创建 API Key 并用 voice/minimax-furina-voice.mjs 克隆音色。
+          <div class="config-tab-page hidden" data-config-page="kb">
+            <div class="config-title">知识库（检索回答）</div>
+            <div class="config-tip">导入 txt / md / json / csv / pdf / docx / xlsx / pptx 文件或文件夹，芙宁娜回答时自动检索其中的内容。</div>
+            <div id="full-chat-kb-status" class="memory-box">初始化中…</div>
+            <div class="kb-path-row">
+              <input id="full-chat-kb-path" class="kb-path-input" type="text" placeholder="输入路径，或点右侧浏览选择" />
+              <button id="full-chat-kb-browse" class="kb-browse-btn">浏览…</button>
+            </div>
+            <div class="kb-buttons">
+              <button id="full-chat-kb-import" class="kb-btn">导入</button>
+              <button id="full-chat-kb-clear" class="memory-clear-btn">清空知识库</button>
+            </div>
           </div>
           <div class="config-buttons">
             <button id="full-chat-config-back">返回</button>
