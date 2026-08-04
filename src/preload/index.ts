@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onChunk: (cb: (payload: { text: string }) => void) => subscribe(IPC_CHANNELS.CHAT_EVENT_CHUNK, cb),
     onDone: (cb: (payload: { text: string }) => void) => subscribe(IPC_CHANNELS.CHAT_EVENT_DONE, cb),
     onError: (cb: (payload: { message: string }) => void) => subscribe(IPC_CHANNELS.CHAT_EVENT_ERROR, cb),
+    onTool: (cb: (payload: { name: string; status: string; summary: string }) => void) => subscribe(IPC_CHANNELS.CHAT_EVENT_TOOL, cb),
   },
 
   // MiniMax 语音朗读

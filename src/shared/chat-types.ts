@@ -17,6 +17,8 @@ export interface ChatConfig {
   baseUrl?: string;
   /** 模型名，默认 deepseek-chat */
   model?: string;
+  /** 是否使用 LangGraph Agent 工具管理（默认开启；关闭则走旧式 runAgent 循环） */
+  useLangGraph?: boolean;
 }
 
 /** 主进程 → 渲染进程 流式事件负载 */
@@ -81,6 +83,6 @@ export interface KnowledgeStatus {
   files: Array<{ name: string; chunkCount: number }>;
   chunkCount: number;
   embedding: "idle" | "loading" | "ready" | "failed";
-  provider: "local" | "minimax" | "none";
+  provider: "local" | "minimax" | "langchain" | "none";
   worldbookCount: number;
 }

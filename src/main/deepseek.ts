@@ -48,6 +48,7 @@ export function resolveChatConfig(): Required<ChatConfig> {
     apiKey: cfg.apiKey || process.env.DEEPSEEK_API_KEY || "",
     baseUrl: (cfg.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, ""),
     model: cfg.model || DEFAULT_MODEL,
+    useLangGraph: cfg.useLangGraph ?? true,
   };
 }
 
@@ -142,6 +143,50 @@ export async function streamDeepSeek(
 
   if (signal?.aborted) throw new Error("已停止生成");
   return full;
+}
+
+/** 非流式调用 DeepSeek（Agent 工具循环用），支持 tools 与中断信号 */
+export async function completeDeepSeek(
+  messages: Array<Record<string, unknown>>,
+  tools?: Array<Record<string, unknown>>,
+  signal?: AbortSignal,
+): Promise<{ content: string; toolCalls: Array<{ id: string; name: string; arguments: string }> }> {
+  const cfg = resolveChatConfig();
+  if (!cfg.apiKey) {
+    throw new Error('未配置 DeepSeek API Key。请在聊天面板的 ⚙ 设置中填入，或设置环境变量 DEEPSEEK_API_KEY。');
+  }
+  const url = `${cfg.baseUrl}/chat/completions`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
+    body: JSON.stringify({
+      model: cfg.model,
+      messages,
+      tools,
+      temperature: 0.8,
+    }),
+    signal,
+  });
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const errBody = (await response.json()) as { error?: { message?: string } };
+      detail = errBody.error?.message || JSON.stringify(errBody);
+    } catch {
+      detail = await response.text().catch(() => '');
+    }
+    throw new Error(`DeepSeek 请求失败 (HTTP ${response.status})\n${detail}`);
+  }
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string | null; tool_calls?: Array<{ id: string; function?: { name?: string; arguments?: string } }> } }>;
+  };
+  const msg = data.choices?.[0]?.message ?? {};
+  const toolCalls = (msg.tool_calls ?? []).map((tc) => ({
+    id: tc.id,
+    name: tc.function?.name ?? '',
+    arguments: tc.function?.arguments ?? '',
+  }));
+  return { content: typeof msg.content === 'string' ? msg.content : '', toolCalls };
 }
 
 /** 裁剪历史：保留 system prompt + 最近 MAX_HISTORY 条消息 */

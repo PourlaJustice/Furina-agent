@@ -20,6 +20,7 @@ export const IPC_CHANNELS = {
   CHAT_EVENT_CHUNK: 'chat:chunk',
   CHAT_EVENT_DONE: 'chat:done',
   CHAT_EVENT_ERROR: 'chat:error',
+  CHAT_EVENT_TOOL: 'chat:tool',   // Agent 工具调用进度（名称/状态/摘要）
   // ---- MiniMax 语音朗读 ----
   TTS_SPEAK: 'tts:speak',          // 渲染进程 → 主进程：合成一句语音 → 返回 base64
   TTS_CONFIG_GET: 'tts:config:get',

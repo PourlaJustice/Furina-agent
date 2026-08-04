@@ -180,6 +180,12 @@ export class ChatPanel {
         this.finishAssistant();
         this.appendMessage(message, "error");
       }),
+      // ★ 工具调用进度提示（如“正在搜索网页…”）
+      api.onTool(({ status, summary }) => {
+        if (status === "start" || status === "blocked") {
+          this.showHint("🔧 " + summary);
+        }
+      }),
     );
   }
 

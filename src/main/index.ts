@@ -6,6 +6,10 @@ import type { ChatMessage } from '../shared/chat-types';
 import { loadChatConfig, resolveChatConfig, saveChatConfig, streamDeepSeek, trimHistory } from './deepseek';
 import { resolveTtsConfig, saveTtsConfig, speakWithConfig } from './tts';
 import { buildMemoryContext, clearMemory, getMemoryInfo, rememberFromTurn } from './memory';
+import { isToolIntent, runAgent } from './agent';
+import { runLangGraph } from './ai/graph';
+import { initLangChainEmbeddings } from './ai/retriever';
+import { initTasks } from './tasks';
 import { clearKnowledge, getKnowledgeStatus, importKnowledgePath, initKnowledgeBase, retrieveKnowledge } from './rag';
 import type { RagResult } from './rag';
 
@@ -342,14 +346,44 @@ function registerChatIpc(): void {
     event.sender.send(IPC_CHANNELS.CHAT_EVENT_STARTED);
     try {
       let full = '';
-      await streamDeepSeek(
-        messages,
-        (delta) => {
-          full += delta;
-          event.sender.send(IPC_CHANNELS.CHAT_EVENT_CHUNK, { text: delta });
-        },
-        controller.signal,
-      );
+      if (isToolIntent(content)) {
+        // ★ 工具意图 → 进入 Agent 循环（非流式；工具过程通过 chat:tool 事件提示）
+        const onTool = (name: string, status: string, summary: string) => {
+          event.sender.send(IPC_CHANNELS.CHAT_EVENT_TOOL, { name, status, summary });
+        };
+        if (resolveChatConfig().useLangGraph) {
+          // ★ LangGraph 路径：Agent 图（决策→工具→回答），失败自动回退旧循环
+          try {
+            full = await runLangGraph(
+              messages as unknown as Array<Record<string, unknown>>,
+              onTool,
+              controller.signal,
+            );
+          } catch (err) {
+            console.error('[LangGraph] 图执行失败，回退旧 Agent 循环:', err instanceof Error ? err.message : String(err));
+            full = await runAgent(
+              messages as unknown as Array<Record<string, unknown>>,
+              onTool,
+              controller.signal,
+            );
+          }
+        } else {
+          full = await runAgent(
+            messages as unknown as Array<Record<string, unknown>>,
+            onTool,
+            controller.signal,
+          );
+        }
+      } else {
+        await streamDeepSeek(
+          messages,
+          (delta) => {
+            full += delta;
+            event.sender.send(IPC_CHANNELS.CHAT_EVENT_CHUNK, { text: delta });
+          },
+          controller.signal,
+        );
+      }
       history.push({ role: 'assistant', content: full });
       event.sender.send(IPC_CHANNELS.CHAT_EVENT_DONE, { text: full });
       // ★ 对话结束后后台提取记忆（不阻塞聊天）
@@ -381,12 +415,13 @@ function registerChatIpc(): void {
 
   // 保存配置（仅接受字符串字段）
   ipcMain.handle(IPC_CHANNELS.CHAT_CONFIG_SET, (_event, patch: unknown) => {
-    const clean: Record<string, string> = {};
+    const clean: Record<string, unknown> = {};
     if (patch && typeof patch === 'object') {
       const obj = patch as Record<string, unknown>;
       for (const key of ['apiKey', 'baseUrl', 'model'] as const) {
         if (typeof obj[key] === 'string') clean[key] = (obj[key] as string).trim();
       }
+      if (typeof obj.useLangGraph === 'boolean') clean.useLangGraph = obj.useLangGraph;
     }
     return saveChatConfig(clean);
   });
@@ -459,8 +494,10 @@ registerMemoryIpc();
 registerKnowledgeIpc();
 
 app.whenReady().then(() => {
+  initTasks(); // 恢复待办与提醒
   createWindow();
   void initKnowledgeBase(); // 启动时后台建立知识库索引
+  void initLangChainEmbeddings(); // 路线 B：LangChain 原生本地嵌入
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

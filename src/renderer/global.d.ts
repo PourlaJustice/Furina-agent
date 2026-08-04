@@ -23,6 +23,7 @@ declare global {
         onChunk: (cb: (payload: { text: string }) => void) => () => void;
         onDone: (cb: (payload: { text: string }) => void) => () => void;
         onError: (cb: (payload: { message: string }) => void) => () => void;
+        onTool: (cb: (payload: { name: string; status: string; summary: string }) => void) => () => void;
       };
       memory: {
         get: () => Promise<MemoryInfo>;

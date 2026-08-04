@@ -157,7 +157,16 @@ function bm25Score(query: string, chunkIdx: number): number {
 
 let extractor: unknown = null;
 let embeddingState: 'idle' | 'loading' | 'ready' | 'failed' = 'idle';
-let semanticProvider: 'local' | 'minimax' | 'none' = 'none';
+let semanticProvider: 'local' | 'minimax' | 'langchain' | 'none' = 'none';
+
+/** 外部注入的查询/分块嵌入器（路线 B：LangChain 原生本地嵌入） */
+let queryEmbedder: ((texts: string[], type: 'db' | 'query') => Promise<number[][]>) | null = null;
+
+export function setQueryEmbedder(
+  fn: ((texts: string[], type: 'db' | 'query') => Promise<number[][]>) | null,
+): void {
+  queryEmbedder = fn;
+}
 
 /** MiniMax API Key：复用语音配置，或环境变量 MINIMAX_API_KEY */
 function getMiniMaxKey(): string {
@@ -218,6 +227,22 @@ async function getExtractor(): Promise<unknown | null> {
 
 async function embedTexts(texts: string[], type: 'db' | 'query' = 'db'): Promise<number[][]> {
   if (texts.length === 0) return [];
+  // 0) LangChain 原生嵌入（路线 B：本地模型离线加载，最先使用）
+  if (queryEmbedder) {
+    try {
+      const v = await queryEmbedder(texts, type);
+      if (v.length > 0) {
+        if (semanticProvider !== 'langchain') {
+          semanticProvider = 'langchain';
+          embeddingState = 'ready';
+          console.log('[RAG] 语义检索使用 LangChain 原生嵌入（本地模型）');
+        }
+        return v;
+      }
+    } catch {
+      // 失败则继续走旧路径
+    }
+  }
   // 1) 本地模型（HF 模型，下载成功时使用）
   const ex = await getExtractor();
   if (ex) {
@@ -499,7 +524,7 @@ export interface KnowledgeStatus {
   files: Array<{ name: string; chunkCount: number }>;
   chunkCount: number;
   embedding: string;
-  provider: 'local' | 'minimax' | 'none';
+  provider: 'local' | 'minimax' | 'langchain' | 'none';
   worldbookCount: number;
 }
 
