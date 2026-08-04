@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { tool } from '@langchain/core/tools';
 import type { StructuredTool } from '@langchain/core/tools';
 import { AGENT_TOOLS, confirmGate, toolDesc } from '../agent';
+import { mcpManager } from './mcp';
 import { retrieveKnowledge } from '../rag';
 
 export type ToolStatusHandler = (
@@ -53,7 +54,8 @@ const knowledgeSearchTool = tool(
 
 /** 构建 LangChain 工具列表：现有 9 个工具 + 知识库检索 */
 export function buildLangChainTools(): StructuredTool[] {
-  const converted = AGENT_TOOLS.map((t) =>
+  const allTools = [...AGENT_TOOLS, ...mcpManager.toToolDefs()];
+  const converted = allTools.map((t) =>
     tool(
       async (args: Record<string, unknown>) => {
         try {

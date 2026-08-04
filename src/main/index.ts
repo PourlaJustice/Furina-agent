@@ -10,6 +10,7 @@ import { isToolIntent, runAgent } from './agent';
 import { runLangGraph } from './ai/graph';
 import { initLangChainEmbeddings } from './ai/retriever';
 import { initTasks } from './tasks';
+import { initMcp, mcpManager } from './ai/mcp';
 import { clearKnowledge, getKnowledgeStatus, importKnowledgePath, initKnowledgeBase, retrieveKnowledge } from './rag';
 import type { RagResult } from './rag';
 
@@ -494,13 +495,18 @@ registerMemoryIpc();
 registerKnowledgeIpc();
 
 app.whenReady().then(() => {
-  initTasks(); // 恢复待办与提醒
+  initTasks();
+  void initMcp(); // MCP 外部工具服务器（阶段 8） // 恢复待办与提醒
   createWindow();
   void initKnowledgeBase(); // 启动时后台建立知识库索引
   void initLangChainEmbeddings(); // 路线 B：LangChain 原生本地嵌入
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on('before-quit', () => {
+  void mcpManager.disconnectAll();
 });
 
 app.on('window-all-closed', () => {

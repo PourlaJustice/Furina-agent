@@ -8,6 +8,7 @@ import { completeDeepSeek } from './deepseek';
 import { parseFileText } from './doc-parsers';
 import { addReminder, addTodo, cancelReminder, completeTodo, deleteTodo, listReminders, listTodos } from './tasks';
 import { getWeather } from './weather';
+import { mcpManager } from './ai/mcp';
 
 // ---------- 工具定义 ----------
 
@@ -378,11 +379,12 @@ export async function runAgent(
   onTool: (name: string, status: 'start' | 'done' | 'blocked' | 'error', summary: string) => void,
   signal?: AbortSignal,
 ): Promise<string> {
-  const toolMap = new Map(AGENT_TOOLS.map((t) => [t.name, t]));
+  const allTools = [...AGENT_TOOLS, ...mcpManager.toToolDefs()];
+  const toolMap = new Map(allTools.map((t) => [t.name, t]));
   const msgs: Array<Record<string, unknown>> = [...messages];
 
   for (let round = 0; round < MAX_ITERATIONS; round++) {
-    const res = await completeDeepSeek(msgs, AGENT_TOOLS.map(toSchema), signal);
+    const res = await completeDeepSeek(msgs, allTools.map(toSchema), signal);
     const assistantMsg: Record<string, unknown> = { role: 'assistant', content: res.content };
     if (res.toolCalls.length > 0) {
       assistantMsg.tool_calls = res.toolCalls.map((tc: AgentToolCall) => ({

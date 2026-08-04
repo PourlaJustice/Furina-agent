@@ -1,0 +1,27 @@
+{
+  "servers": [
+    {
+      "name": "filesystem",
+      "enabled": true,
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "E:/Desktop"],
+      "dangerous": true
+    },
+    {
+      "name": "playwright",
+      "enabled": false,
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-playwright"],
+      "dangerous": true
+    },
+    {
+      "name": "example-sse",
+      "enabled": false,
+      "transport": "sse",
+      "url": "http://localhost:3000/mcp",
+      "dangerous": true
+    }
+  ]
+}
