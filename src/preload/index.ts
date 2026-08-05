@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     quit: () => ipcRenderer.send('window:quit'),
     // 拖拽窗口（桌面宠物核心交互）
     moveBy: (dx: number, dy: number) => ipcRenderer.send(IPC_CHANNELS.WINDOW_MOVE_BY, dx, dy),
+    openExternal: (url: string) => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_OPEN_EXTERNAL, url),
     // 独立全屏聊天窗口
     openFullChat: () => ipcRenderer.invoke(IPC_CHANNELS.FULL_CHAT_OPEN),
     closeFullChat: () => ipcRenderer.invoke(IPC_CHANNELS.FULL_CHAT_CLOSE),
@@ -63,6 +64,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // 独立聊天窗口顶栏控制（仅全屏窗口使用）
+  // 危险操作信任管理
+  tools: {
+    listTrusted: () => ipcRenderer.invoke(IPC_CHANNELS.TOOLS_LIST_TRUSTED),
+    clearTrusted: () => ipcRenderer.invoke(IPC_CHANNELS.TOOLS_CLEAR_TRUSTED),
+  },
+  // 高危操作确认（主题弹窗）
+  danger: {
+    onConfirm: (cb: (payload: { id: string; toolName: string; detail: string }) => void) =>
+      subscribe('danger:confirm', cb),
+    respond: (id: string, choice: 'once' | 'always' | 'deny') =>
+      ipcRenderer.invoke('danger:confirm:respond', { id, choice }),
+  },
+  // 迷你点歌台
+  music: {
+    openMini: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_MINI_OPEN),
+    closeMini: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_MINI_CLOSE),
+  },
   fullwin: {
     min: () => ipcRenderer.invoke(IPC_CHANNELS.FULL_WIN_MIN),
     max: () => ipcRenderer.invoke(IPC_CHANNELS.FULL_WIN_MAX),

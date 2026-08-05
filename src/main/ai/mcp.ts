@@ -14,6 +14,7 @@ export interface MCPServerConfig {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  cwd?: string;
   url?: string;
   headers?: Record<string, string>;
   /** 是否在每次调用前弹窗确认（外部工具默认视为危险，防误操作） */
@@ -117,7 +118,7 @@ class MCPManager {
         transport = new SSEClientTransport(new URL(cfg.url), cfg.headers ? { requestInit: { headers: cfg.headers } } : undefined);
       } else {
         if (!cfg.command) throw new Error('stdio 服务器缺少 command 配置');
-        transport = new StdioClientTransport({ command: cfg.command, args: cfg.args, env: cfg.env });
+        transport = new StdioClientTransport({ command: cfg.command, args: cfg.args, env: cfg.env, cwd: cfg.cwd });
       }
       const client = new Client({ name: 'furina-agent', version: '1.0.0' });
       await withTimeout(client.connect(transport), CONNECT_TIMEOUT, `连接超时（${cfg.name}）`);

@@ -129,6 +129,57 @@ async function initPetMode(): Promise<void> {
   });
 }
 
+// ================= 高危操作确认弹窗 =================
+function initDangerOverlay(): void {
+  const overlay = document.getElementById("danger-overlay") as HTMLElement;
+  const toolEl = document.getElementById("danger-tool-name") as HTMLElement;
+  const detailEl = document.getElementById("danger-detail") as HTMLElement;
+  const onceBtn = document.getElementById("danger-once") as HTMLButtonElement;
+  const alwaysBtn = document.getElementById("danger-always") as HTMLButtonElement;
+  const denyBtn = document.getElementById("danger-deny") as HTMLButtonElement;
+  const closeBtn = document.getElementById("danger-close") as HTMLButtonElement;
+  let currentId = "";
+  let showing = false;
+  const queue: Array<{ id: string; toolName: string; detail: string }> = [];
+
+  const hide = (): void => overlay.classList.add("hidden");
+  const showNext = (): void => {
+    if (queue.length === 0) {
+      showing = false;
+      hide();
+      return;
+    }
+    const req = queue.shift()!;
+    currentId = req.id;
+    toolEl.textContent = req.toolName;
+    detailEl.textContent = req.detail || "（无参数）";
+    overlay.classList.remove("hidden");
+    showing = true;
+  };
+
+  const respond = (choice: "once" | "always" | "deny"): void => {
+    if (!currentId) return;
+    void window.electronAPI.danger.respond(currentId, choice);
+    currentId = "";
+    hide();
+    showNext();
+  };
+
+  window.electronAPI.danger.onConfirm((payload) => {
+    queue.push(payload);
+    if (!showing) showNext();
+  });
+
+  onceBtn.addEventListener("click", () => respond("once"));
+  alwaysBtn.addEventListener("click", () => respond("always"));
+  denyBtn.addEventListener("click", () => respond("deny"));
+  closeBtn.addEventListener("click", () => respond("deny"));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") respond("deny");
+  });
+}
+
+initDangerOverlay();
 if (fullMode) {
   void initFullMode();
 } else {

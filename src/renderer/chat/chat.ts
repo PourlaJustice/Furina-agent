@@ -43,6 +43,10 @@ export class ChatPanel {
   private kbImportBtn: HTMLButtonElement;
   private kbClearBtn: HTMLButtonElement;
   private kbBrowseBtn: HTMLButtonElement;
+  // 危险操作信任
+  private trustListEl: HTMLElement;
+  private trustClearBtn: HTMLButtonElement;
+  private musicBtn: HTMLButtonElement | null;
 
   private md: MarkdownIt;
   private visible = false;
@@ -95,6 +99,9 @@ export class ChatPanel {
     this.kbImportBtn = el("chat-kb-import");
     this.kbClearBtn = el("chat-kb-clear");
     this.kbBrowseBtn = el("chat-kb-browse");
+    this.trustListEl = el("chat-trust-list");
+    this.trustClearBtn = el("chat-trust-clear");
+    this.musicBtn = maybe("chat-music");
 
     // Markdown 渲染：关闭 html，保留链接与换行
     this.md = new MarkdownIt({ html: false, breaks: true, linkify: true });
@@ -137,8 +144,18 @@ export class ChatPanel {
     this.kbImportBtn.addEventListener("click", () => void this.importKnowledge());
     this.kbClearBtn.addEventListener("click", () => void this.clearKnowledge());
     this.kbBrowseBtn.addEventListener("click", () => void this.browseKnowledge());
+    this.trustClearBtn.addEventListener("click", () => void this.clearTrustedTools());
+    this.musicBtn?.addEventListener("click", () => void window.electronAPI.music.openMini());
 
     this.sendBtn.addEventListener("click", () => void this.send());
+    // 点击消息里的链接 → 系统浏览器打开，不让窗口跳走
+    this.messagesEl.addEventListener("click", (e) => {
+      const a = (e.target as HTMLElement).closest<HTMLAnchorElement>("a");
+      if (!a) return;
+      e.preventDefault();
+      const href = a.getAttribute("href") || "";
+      if (/^https?:\/\//i.test(href)) void window.electronAPI.window.openExternal(href);
+    });
     this.inputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
@@ -181,9 +198,12 @@ export class ChatPanel {
         this.appendMessage(message, "error");
       }),
       // ★ 工具调用进度提示（如“正在搜索网页…”）
-      api.onTool(({ status, summary }) => {
+      api.onTool(({ name, status, summary }) => {
         if (status === "start" || status === "blocked") {
           this.showHint("🔧 " + summary);
+        }
+        if (status === "done" && name && /^netease-music__(play_song|play_track|next_song|replay_track)/.test(name)) {
+          void window.electronAPI.music.openMini();
         }
       }),
     );
@@ -463,6 +483,7 @@ export class ChatPanel {
     this.configView.scrollTop = 0;
     void this.refreshMemory();
     void this.refreshKnowledge();
+    void this.refreshTrustedTools();
   }
 
   private closeConfig(): void {
@@ -471,6 +492,36 @@ export class ChatPanel {
 
   // ================= 记忆查看与清空 =================
 
+  // ================= 危险操作信任 =================
+
+  private async refreshTrustedTools(): Promise<void> {
+    try {
+      const list = await window.electronAPI.tools.listTrusted();
+      this.trustListEl.innerHTML = "";
+      if (list.length === 0) {
+        const d = document.createElement("div");
+        d.className = "memory-empty";
+        d.textContent = "还没有信任任何操作，所有危险操作都会先询问你。";
+        this.trustListEl.appendChild(d);
+        return;
+      }
+      for (const name of list) {
+        const d = document.createElement("div");
+        d.className = "trust-item";
+        const label = name.endsWith("__") ? name.slice(0, -2) + "（该服务的全部操作）" : name;
+    d.textContent = "✓ " + label;
+        this.trustListEl.appendChild(d);
+      }
+    } catch {
+      /* 忽略加载失败 */
+    }
+  }
+
+  private async clearTrustedTools(): Promise<void> {
+    await window.electronAPI.tools.clearTrusted();
+    await this.refreshTrustedTools();
+    this.showHint("已恢复：以后每个危险操作都会先询问你。");
+  }
   private async refreshMemory(): Promise<void> {
     try {
       const info = await window.electronAPI.memory.get();

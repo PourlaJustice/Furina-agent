@@ -674,3 +674,119 @@ body.mode-full #chat-toggle { display: none; }
 .kb-browse-btn:hover {
   background: rgba(140, 160, 255, 0.24);
 }
+
+/* 危险操作信任列表 */
+.trust-item {
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+/* ===== 高危操作确认弹窗（与聊天同款深色主题） ===== */
+#danger-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(4, 7, 16, 0.72);
+  backdrop-filter: blur(4px);
+}
+#danger-overlay.hidden { display: none !important; }
+.danger-modal {
+  width: min(360px, 92vw);
+  background: linear-gradient(180deg, rgba(26, 30, 48, 0.98), rgba(14, 16, 26, 0.98));
+  border: 1px solid rgba(111, 139, 255, 0.35);
+  border-radius: 16px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  user-select: none;
+}
+.danger-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: linear-gradient(90deg, rgba(111, 139, 255, 0.22), rgba(154, 111, 255, 0.18));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.danger-title {
+  color: #e7eeff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+#danger-close {
+  border: none;
+  background: transparent;
+  color: #8a94ad;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+#danger-close:hover { color: #fff; }
+.danger-body { padding: 14px 14px 10px; }
+.danger-desc { color: #aab6d4; font-size: 12px; margin-bottom: 6px; }
+.danger-tool {
+  display: inline-block;
+  max-width: 100%;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: rgba(111, 139, 255, 0.16);
+  border: 1px solid rgba(111, 139, 255, 0.3);
+  color: #9db7ff;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+  margin-bottom: 8px;
+}
+.danger-args {
+  color: #aab6d4;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-bottom: 10px;
+}
+.danger-tip {
+  color: #7f8aa6;
+  font-size: 11px;
+  line-height: 1.7;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+  padding-top: 8px;
+}
+.danger-buttons {
+  display: flex;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+.danger-btn {
+  flex: 1;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 8px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+.danger-btn:hover { transform: translateY(-1px); filter: brightness(1.12); }
+.danger-btn.primary {
+  background: linear-gradient(135deg, rgba(111, 139, 255, 0.95), rgba(154, 111, 255, 0.95));
+  color: #fff;
+}
+.danger-btn.ghost {
+  background: rgba(255, 255, 255, 0.08);
+  color: #b9c6e8;
+  border-color: rgba(154, 111, 255, 0.4);
+}
+.danger-btn.danger {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ff9aa6;
+  border-color: rgba(255, 120, 140, 0.35);
+}

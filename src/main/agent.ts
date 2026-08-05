@@ -1,7 +1,7 @@
 // Agent 编排 + 工具调用（Function Calling）
 // 两阶段：用户消息含工具意图时 → LLM 分析 → 调用工具（危险操作弹窗确认）→ 循环直到给出最终回答。
 
-import { app, BrowserWindow, dialog, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { completeDeepSeek } from './deepseek';
@@ -10,6 +10,7 @@ import { addReminder, addTodo, cancelReminder, completeTodo, deleteTodo, listRem
 import { getWeather } from './weather';
 import { mcpManager } from './ai/mcp';
 import { screenshotTool } from './screenshot';
+import { isToolTrusted, trustTool } from './trust-store';
 
 // ---------- 工具定义 ----------
 
@@ -30,23 +31,74 @@ function toSchema(t: ToolDef): Record<string, unknown> {
 }
 
 /** 危险操作弹窗确认 */
+interface PendingConfirm {
+  toolName: string;
+  resolve: (ok: boolean) => void;
+  timer: NodeJS.Timeout;
+}
+
+const pendingConfirms = new Map<string, PendingConfirm>();
+
+/** 渲染进程返回确认结果：once=仅本次 / always=以后默认通过 / deny=拒绝 */
+ipcMain.handle('danger:confirm:respond', (_event, payload: { id?: unknown; choice?: unknown }) => {
+  const id = typeof payload?.id === 'string' ? payload.id : '';
+  const pending = pendingConfirms.get(id);
+  if (!pending) return false;
+  clearTimeout(pending.timer);
+  pendingConfirms.delete(id);
+  const choice = typeof payload?.choice === 'string' ? payload.choice : '';
+  if (choice === 'once') pending.resolve(true);
+  else if (choice === 'always') {
+    trustTool(pending.toolName);
+    pending.resolve(true);
+  } else {
+    pending.resolve(false);
+  }
+  return true;
+});
+
+/** 危险操作确认：优先使用聊天同款主题弹窗，界面不可用时回退系统对话框 */
 export async function confirmGate(toolName: string, args: Record<string, unknown>): Promise<boolean> {
-  const win = BrowserWindow.getAllWindows().find((w) => w.isVisible()) ?? undefined;
+  // 已信任的操作类型直接放行，不再弹窗
+  if (isToolTrusted(toolName)) return true;
+
   const detail = Object.entries(args)
     .map(([k, v]) => `${k}=${String(v)}`)
     .join('\n');
+  const win =
+    BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.isFocused()) ??
+    BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.isVisible()) ??
+    undefined;
+  if (win && !win.webContents.isDestroyed()) {
+    const id = `danger-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        pendingConfirms.delete(id);
+        resolve(false);
+      }, 120_000);
+      pendingConfirms.set(id, { toolName, resolve, timer });
+      win.webContents.send('danger:confirm', { id, toolName, detail });
+    });
+  }
+
+  // 回退：系统原生对话框
   const options = {
     type: 'warning' as const,
     title: '高危操作确认',
     message: `芙宁娜想要执行：${toolName}`,
-    detail: `${detail}\n\n是否允许？`,
-    buttons: ['允许', '拒绝'],
-    defaultId: 1,
-    cancelId: 1,
+    detail: `${detail}\n\n如何选择？\n· 仅允许本次：只放行这一次，下次同类操作仍会询问\n· 本次及以后默认通过：以后同类操作不再询问\n· 拒绝：阻止这次操作`,
+    buttons: ['仅允许本次', '本次及以后默认通过', '拒绝'],
+    defaultId: 2,
+    cancelId: 2,
     noLink: true,
   };
-  const result = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
-  return result.response === 0;
+  const result = await dialog.showMessageBox(options);
+  if (result.response === 0) return true;
+  if (result.response === 1) {
+    trustTool(toolName);
+    return true;
+  }
+  return false;
 }
 
 /** 执行单个工具；危险工具先弹窗确认 */
@@ -380,6 +432,7 @@ const TOOL_KEYWORDS = [
   '提醒', '待办', '日程', '备忘', '闹钟', '记一下', '事项', '别忘了',
   '气温', '预报', '下雨', '刮风', '台风',
   '截图', '屏幕', '截屏', '看看画面',
+  '播放', '听歌', '放歌', '点歌', '音乐', '歌曲', '歌单', '歌词', '切歌', '暂停', '继续播放', '停止播放', '音量', '播放器', '放一首', '来一首', '听一首',
 ];
 
 export function isToolIntent(text: string): boolean {

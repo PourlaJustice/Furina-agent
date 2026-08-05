@@ -31,6 +31,7 @@
       <div class="chat-actions">
         <button id="chat-clear" title="清空对话">清空</button>
         <button id="chat-config" title="DeepSeek 设置">⚙ 设置</button>
+        <button id="chat-music" title="迷你点歌台">🎵</button>
         <button id="chat-fullscreen" title="全屏聊天">⛶</button>
         <button id="chat-close" title="收起面板">✕</button>
       </div>
@@ -48,6 +49,7 @@
       <button class="config-tab" data-config-tab="voice">语音</button>
       <button class="config-tab" data-config-tab="memory">记忆</button>
       <button class="config-tab" data-config-tab="kb">知识库</button>
+      <button class="config-tab" data-config-tab="tools">操作确认</button>
     </div>
     <div class="config-tab-page" data-config-page="chat">
       <div class="config-title">DeepSeek 设置</div>
@@ -114,6 +116,15 @@
         <button id="chat-kb-clear" class="memory-clear-btn">清空知识库</button>
       </div>
     </div>
+    <div class="config-tab-page hidden" data-config-page="tools">
+      <div class="config-title">操作确认（危险操作）</div>
+      <div class="config-tip">当芙宁娜要操作文件、打开浏览器等危险操作时，会弹窗让你选择：<b>仅允许本次</b>，或<b>本次及以后默认通过</b>（同类操作以后不再询问）。</div>
+      <div id="chat-trust-list" class="memory-box">
+        <div class="memory-empty">还没有信任任何操作，所有危险操作都会先询问你。</div>
+      </div>
+      <button id="chat-trust-clear" class="memory-clear-btn">清除信任，恢复每次询问</button>
+    </div>
+
     <div class="config-buttons">
       <button id="chat-config-back">返回</button>
       <button id="chat-config-save">保存</button>
@@ -138,6 +149,7 @@
             <div class="chat-actions">
               <button id="full-chat-clear" title="清空对话">清空</button>
               <button id="full-chat-config" title="设置">⚙ 设置</button>
+              <button id="full-chat-music" title="迷你点歌台">🎵</button>
             </div>
           </div>
           <div id="full-chat-messages"></div>
@@ -153,6 +165,7 @@
             <button class="config-tab" data-config-tab="voice">语音</button>
             <button class="config-tab" data-config-tab="memory">记忆</button>
             <button class="config-tab" data-config-tab="kb">知识库</button>
+            <button class="config-tab" data-config-tab="tools">操作确认</button>
           </div>
           <div class="config-tab-page" data-config-page="chat">
             <div class="config-title">DeepSeek 设置</div>
@@ -217,7 +230,16 @@
               <button id="full-chat-kb-clear" class="memory-clear-btn">清空知识库</button>
             </div>
           </div>
-          <div class="config-buttons">
+          <div class="config-tab-page hidden" data-config-page="tools">
+      <div class="config-title">操作确认（危险操作）</div>
+      <div class="config-tip">当芙宁娜要操作文件、打开浏览器等危险操作时，会弹窗让你选择：<b>仅允许本次</b>，或<b>本次及以后默认通过</b>（同类操作以后不再询问）。</div>
+      <div id="full-chat-trust-list" class="memory-box">
+        <div class="memory-empty">还没有信任任何操作，所有危险操作都会先询问你。</div>
+      </div>
+      <button id="full-chat-trust-clear" class="memory-clear-btn">清除信任，恢复每次询问</button>
+    </div>
+
+    <div class="config-buttons">
             <button id="full-chat-config-back">返回</button>
             <button id="full-chat-config-save">保存</button>
           </div>
@@ -229,6 +251,29 @@
       </aside>
     </main>
   </div>
+  <!-- 高危操作确认（与聊天同款深色主题） -->
+  <div id="danger-overlay" class="hidden">
+    <div class="danger-modal">
+      <div class="danger-head">
+        <span class="danger-title">⚠ 高危操作确认</span>
+        <button id="danger-close" title="拒绝">×</button>
+      </div>
+      <div class="danger-body">
+        <div class="danger-desc">芙宁娜想要执行：</div>
+        <div class="danger-tool" id="danger-tool-name"></div>
+        <div class="danger-args" id="danger-detail"></div>
+        <div class="danger-tip">
+          如何选择？<br />· 仅允许本次：只放行这一次，下次同类操作仍会询问<br />· 本次及以后默认通过：以后同类操作不再询问<br />· 拒绝：阻止这次操作
+        </div>
+      </div>
+      <div class="danger-buttons">
+        <button id="danger-once" class="danger-btn primary">仅允许本次</button>
+        <button id="danger-always" class="danger-btn ghost">以后默认通过</button>
+        <button id="danger-deny" class="danger-btn danger">拒绝</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="./main.ts"></script>
 </body>
 </html>

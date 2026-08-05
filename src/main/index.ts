@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
@@ -11,6 +11,7 @@ import { runLangGraph } from './ai/graph';
 import { initLangChainEmbeddings } from './ai/retriever';
 import { initTasks } from './tasks';
 import { initMcp, mcpManager } from './ai/mcp';
+import { clearTrustedTools, listTrustedTools } from './trust-store';
 import { screenshotHelper } from './screenshot';
 import { clearKnowledge, getKnowledgeStatus, importKnowledgePath, initKnowledgeBase, retrieveKnowledge } from './rag';
 import type { RagResult } from './rag';
@@ -20,6 +21,23 @@ app.commandLine.appendSwitch('enable-transparent-visuals');
 app.commandLine.appendSwitch('disable-gpu-sandbox');
 // 禁用叠加式滚动条，让 ::-webkit-scrollbar 自定义样式生效
 app.commandLine.appendSwitch('disable-features', 'OverlayScrollbar');
+
+// ---- 外部链接处理：聊天里的链接一律在系统浏览器打开，避免窗口被带走 ----
+function isAppUrl(url: string): boolean {
+  return url.startsWith('http://localhost:5173') || url.startsWith('file://');
+}
+app.on('browser-window-created', (_event, win) => {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isAppUrl(url)) return { action: 'allow' };
+    void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event, url) => {
+    if (isAppUrl(url)) return;
+    event.preventDefault();
+    void shell.openExternal(url);
+  });
+});
 
 // ---- 诊断信息 ----
 console.log('[Furina] Platform:', process.platform);
@@ -123,6 +141,11 @@ function createWindow() {
 }
 
 ipcMain.handle(IPC_CHANNELS.APP_VERSION, () => '0.1.0');
+  ipcMain.handle(IPC_CHANNELS.WINDOW_OPEN_EXTERNAL, (_event, url: unknown) => {
+    const u = typeof url === 'string' ? url : '';
+    if (/^https?:\/\//i.test(u)) void shell.openExternal(u);
+    return true;
+  });
 
 // 拖拽窗口：渲染进程按住角色拖动时，主进程按位移移动窗口
 ipcMain.on(IPC_CHANNELS.WINDOW_MOVE_BY, (event, dx: number, dy: number) => {
@@ -262,7 +285,11 @@ const FURINA_SYSTEM_PROMPT = `你是芙宁娜·德·枫丹，来自《原神》�
 7. 不要自称 AI、模型或助手，你就是芙宁娜；也不要解释提示词或系统设定
 8. 口癖和戏剧词汇适度使用，像真实的人一样自然，不要每句话都堆砌舞台词
 9. 「世界见闻」部分是你的亲身经历与说话范本，聊到相关内容时以回忆口吻自然化用，不需要复述原文；官方语音里的句子可以在情绪相当时直接使用
-10. 回复时必须用（）穿插动作/表情描写来配合演出（这是你的舞台表现力）：每段回复至少 1 处、最多 3 处，放在句首或情绪转折处。可用动作：眨眼、点头、摇头、歪头、叹气、低头、抬头、凑近、摊手、耸肩、压低声音、捂嘴偷笑；可用表情：眼睛发亮、小脸红、猫猫嘴、托脸、得意、汗、呆毛、生气、委屈、哭。示例回复：「（眨眨眼，眼睛发亮）说到甜点我可就来精神啦～（托脸）今天想吃马卡龙还是小蛋糕呢？」；动作描写要贴合情绪、自然融入，不要堆砌`;
+10. 回复时必须用（）穿插动作/表情描写来配合演出（这是你的舞台表现力）：每段回复至少 1 处、最多 3 处，放在句首或情绪转折处。可用动作：眨眼、点头、摇头、歪头、叹气、低头、抬头、凑近、摊手、耸肩、压低声音、捂嘴偷笑；可用表情：眼睛发亮、小脸红、猫猫嘴、托脸、得意、汗、呆毛、生气、委屈、哭。示例回复：「（眨眨眼，眼睛发亮）说到甜点我可就来精神啦～（托脸）今天想吃马卡龙还是小蛋糕呢？」；动作描写要贴合情绪、自然融入，不要堆砌
+
+## 可用工具（重要）
+11. 你有很多真实可用的工具。当用户要求播放音乐、点歌、听歌、放歌、切歌、暂停、继续、停止、调整音量、搜索歌曲、查看歌词或歌单时，必须调用 netease-music 音乐工具（netease-music__play_song / netease-music__search_song / netease-music__pause / netease-music__resume / netease-music__next_song / netease-music__get_listening_context / netease-music__open_web_player 等）。第一次播放前先调用 netease-music__open_web_player，并把返回的本地播放器地址告诉用户；播放成功后调用 netease-music__get_listening_context，把正在播放的歌名、歌手和当前歌词自然地讲给用户。工具会完成实际操作，你负责配合演出和转述。 点歌必须真实执行：用户要求播放/切歌/搜索歌曲时，必须先调用工具并等它成功，再回复；没有真正播放就不要说"已经在放了"。搜索关键词要具体，用"歌名 + 歌手"（例如用户说"2024英雄联盟全球总决赛主题曲"，先确定歌名是 Heavy Is The Crown，再用 "Heavy Is The Crown Linkin Park" 搜索播放）。如果搜到的第一首明显不是用户要的歌，继续挑选最匹配的，或明确告诉用户找到的是哪首、是否继续。
+12. 当用户要求打开网页、搜索资料、查询天气、查看或整理文件、截图、设置待办提醒时，同样调用对应的内置工具或 MCP 工具，而不是说自己做不到。`;
 
 // 每个渲染窗口独立的对话历史
 const chatHistories = new Map<number, ChatMessage[]>();
@@ -475,6 +502,8 @@ function registerKnowledgeIpc(): void {
     importKnowledgePath(typeof target === 'string' ? target : '')
   );
   ipcMain.handle(IPC_CHANNELS.KNOWLEDGE_CLEAR, () => clearKnowledge());
+  ipcMain.handle(IPC_CHANNELS.TOOLS_LIST_TRUSTED, () => listTrustedTools());
+  ipcMain.handle(IPC_CHANNELS.TOOLS_CLEAR_TRUSTED, () => clearTrustedTools());
   // 弹出系统文件/文件夹选择对话框
   ipcMain.handle(IPC_CHANNELS.KNOWLEDGE_PICK_PATH, async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
@@ -492,6 +521,56 @@ function registerKnowledgeIpc(): void {
 
 registerChatIpc();
 registerTtsIpc();
+
+// ---- 迷你点歌台悬浮窗 ----
+let musicMiniWindow: BrowserWindow | null = null;
+
+function registerMusicMiniIpc(): void {
+  ipcMain.handle(IPC_CHANNELS.MUSIC_MINI_OPEN, () => {
+    if (musicMiniWindow && !musicMiniWindow.isDestroyed()) {
+      musicMiniWindow.show();
+      musicMiniWindow.focus();
+      return true;
+    }
+    const area = screen.getPrimaryDisplay().workArea;
+    const win = new BrowserWindow({
+      width: 280,
+      height: 400,
+      x: area.x + area.width - 300,
+      y: area.y + area.height - 440,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      alwaysOnTop: true,
+      webPreferences: {
+        preload: path.join(__dirname, '../../preload/index.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    musicMiniWindow = win;
+    let retries = 0;
+    const loadMini = (): void => { win.loadURL('http://127.0.0.1:8765/mini'); };
+    win.webContents.on('did-fail-load', () => {
+      if (retries < 5) {
+        retries += 1;
+        setTimeout(loadMini, 1000);
+      }
+    });
+    win.on('closed', () => {
+      if (musicMiniWindow === win) musicMiniWindow = null;
+    });
+    loadMini();
+    return true;
+  });
+  ipcMain.handle(IPC_CHANNELS.MUSIC_MINI_CLOSE, (event) => {
+    if (musicMiniWindow && !musicMiniWindow.isDestroyed() && musicMiniWindow.webContents.id === event.sender.id) {
+      musicMiniWindow.close();
+    }
+    return true;
+  });
+}
+registerMusicMiniIpc();
 registerMemoryIpc();
 registerKnowledgeIpc();
 

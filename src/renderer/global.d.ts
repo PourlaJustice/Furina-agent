@@ -12,6 +12,7 @@ declare global {
         hide: () => void;
         quit: () => void;
         moveBy: (dx: number, dy: number) => void;
+        openExternal: (url: string) => Promise<boolean>;
       };
       chat: {
         send: (text: string) => Promise<void>;
@@ -28,6 +29,18 @@ declare global {
       memory: {
         get: () => Promise<MemoryInfo>;
         clear: () => Promise<MemoryInfo>;
+      };
+      music: {
+        openMini: () => Promise<boolean>;
+        closeMini: () => Promise<boolean>;
+      };
+      danger: {
+        onConfirm: (cb: (payload: { id: string; toolName: string; detail: string }) => void) => () => void;
+        respond: (id: string, choice: 'once' | 'always' | 'deny') => Promise<boolean>;
+      };
+      tools: {
+        listTrusted: () => Promise<string[]>;
+        clearTrusted: () => Promise<string[]>;
       };
       knowledge: {
         getStatus: () => Promise<KnowledgeStatus>;

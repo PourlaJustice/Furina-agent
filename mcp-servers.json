@@ -1,27 +1,45 @@
 {
-  "servers": [
-    {
-      "name": "filesystem",
-      "enabled": true,
-      "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "E:/Desktop"],
-      "dangerous": true
-    },
-    {
-      "name": "playwright",
-      "enabled": false,
-      "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-playwright"],
-      "dangerous": true
-    },
-    {
-      "name": "example-sse",
-      "enabled": false,
-      "transport": "sse",
-      "url": "http://localhost:3000/mcp",
-      "dangerous": true
-    }
-  ]
+    "servers":  [
+                    {
+                        "name":  "filesystem",
+                        "enabled":  true,
+                        "transport":  "stdio",
+                        "command":  "npx",
+                        "args":  [
+                                     "-y",
+                                     "@modelcontextprotocol/server-filesystem",
+                                     "E:/Desktop"
+                                 ],
+                        "dangerous":  true
+                    },
+                    {
+                        "name":  "playwright",
+                        "enabled":  true,
+                        "transport":  "stdio",
+                        "command":  "npx",
+                        "args":  [
+                                     "-y",
+                                     "@playwright/mcp@latest"
+                                 ],
+                        "dangerous":  true
+                    },
+                    {
+                        "name":  "netease-music",
+                        "enabled":  true,
+                        "transport":  "stdio",
+                        "command":  "node",
+                        "args":  [
+                                     "E:/Desktop/netease-music-mcp/src/server.js"
+                                 ],
+                        "cwd":  "E:/Desktop/netease-music-mcp",
+                        "dangerous":  true
+                    },
+                    {
+                        "name":  "example-sse",
+                        "enabled":  false,
+                        "transport":  "sse",
+                        "url":  "http://localhost:3000/mcp",
+                        "dangerous":  true
+                    }
+                ]
 }

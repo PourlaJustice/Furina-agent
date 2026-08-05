@@ -37,3 +37,6 @@ screenshots/
 
 # Rust 截图助手构建产物
 resources/bin/
+
+# Playwright MCP outputs
+.playwright-mcp/

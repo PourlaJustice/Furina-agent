@@ -4,6 +4,7 @@
 export const IPC_CHANNELS = {
   APP_VERSION: 'app:version',
   WINDOW_MOVE_BY: 'window:move-by',
+  WINDOW_OPEN_EXTERNAL: 'window:open-external',
   // ---- 独立全屏聊天窗口 ----
   FULL_CHAT_OPEN: 'chat:full:open',   // 桌宠 → 主进程：打开独立聊天窗口
   FULL_CHAT_CLOSE: 'chat:full:close', // 聊天窗口 → 主进程：关闭并回到桌宠
@@ -33,4 +34,10 @@ export const IPC_CHANNELS = {
   KNOWLEDGE_IMPORT: 'knowledge:import',
   KNOWLEDGE_CLEAR: 'knowledge:clear',
   KNOWLEDGE_PICK_PATH: 'knowledge:pick-path',
+  // ---- 危险操作信任 ----
+  TOOLS_LIST_TRUSTED: 'tools:trust:list',
+  TOOLS_CLEAR_TRUSTED: 'tools:trust:clear',
+  // ---- 迷你点歌台 ----
+  MUSIC_MINI_OPEN: 'music:mini:open',
+  MUSIC_MINI_CLOSE: 'music:mini:close',
 } as const;
