@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
-import type { ChatConfig, KnowledgeStatus, MemoryInfo, TtsConfig, TtsSpeakResult } from '../shared/chat-types';
+import type { AsrConfig, ChatConfig, KnowledgeStatus, MemoryInfo, TtsConfig, TtsSpeakResult } from '../shared/chat-types';
 
 // 通过 contextBridge 安全暴露 API 给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -47,6 +47,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     speak: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.TTS_SPEAK, text) as Promise<TtsSpeakResult>,
     getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.TTS_CONFIG_GET) as Promise<TtsConfig>,
     setConfig: (patch: TtsConfig) => ipcRenderer.invoke(IPC_CHANNELS.TTS_CONFIG_SET, patch) as Promise<TtsConfig>,
+  },
+
+  // 语音输入（阿里云百炼实时语音识别）
+  asr: {
+    start: () => ipcRenderer.invoke(IPC_CHANNELS.ASR_START) as Promise<string>,
+    sendAudio: (sessionId: string, data: ArrayBuffer) => ipcRenderer.send(IPC_CHANNELS.ASR_AUDIO, sessionId, data),
+    stop: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.ASR_STOP, sessionId) as Promise<string>,
+    cancel: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.ASR_CANCEL, sessionId),
+    getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.ASR_CONFIG_GET) as Promise<AsrConfig>,
+    setConfig: (patch: AsrConfig) => ipcRenderer.invoke(IPC_CHANNELS.ASR_CONFIG_SET, patch) as Promise<AsrConfig>,
+    onPartial: (cb: (payload: { sessionId: string; text: string }) => void) => subscribe(IPC_CHANNELS.ASR_EVENT_PARTIAL, cb),
+    onFinal: (cb: (payload: { sessionId: string; text: string }) => void) => subscribe(IPC_CHANNELS.ASR_EVENT_FINAL, cb),
+    onError: (cb: (payload: { sessionId: string; message: string }) => void) => subscribe(IPC_CHANNELS.ASR_EVENT_ERROR, cb),
   },
 
   // 三层记忆系统

@@ -64,6 +64,16 @@ export interface TtsSpeakResult {
   error?: string;
 }
 
+/** 阿里云百炼实时语音识别配置（保存于 userData/asr-config.json） */
+export interface AsrConfig {
+  /** 阿里云百炼 API Key，留空时回退到环境变量 DASHSCOPE_API_KEY */
+  apiKey?: string;
+  /** 识别模型：qwen-audio-3.0-asr-flash-streaming（推荐，更准）| paraformer-realtime-v2 */
+  model?: 'qwen-audio-3.0-asr-flash-streaming' | 'paraformer-realtime-v2';
+  /** 热词（逗号分隔），提升人名/专有名词识别准确率 */
+  hotWords?: string;
+}
+
 /** 记忆信息（设置界面展示用） */
 export interface MemoryInfo {
   name?: string;

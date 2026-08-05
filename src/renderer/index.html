@@ -38,6 +38,7 @@
     </div>
     <div id="chat-messages"></div>
     <div class="chat-input-row">
+      <button id="chat-mic" class="mic-btn" title="按住说话（语音输入）">🎤</button>
       <textarea id="chat-input" rows="1" placeholder="和芙宁娜说点什么…（Enter 发送 / Shift+Enter 换行）"></textarea>
       <button id="chat-send">发送</button>
     </div>
@@ -93,6 +94,26 @@
       <div class="config-tip">
         先在 MiniMax 平台创建 API Key 并用 voice/minimax-furina-voice.mjs 克隆音色，
         把音色 ID 填到这里。Key 仅保存在本机，也可以改用环境变量 MINIMAX_API_KEY。
+      </div>
+      <div class="config-title config-sub-title">语音输入（按住 🎤 说话）</div>
+      <div class="config-field">
+        <label>阿里云百炼 API Key</label>
+        <input id="config-asr-apikey" type="password" placeholder="sk-..." autocomplete="off" />
+      </div>
+      <div class="config-field">
+        <label>识别模型</label>
+        <select id="config-asr-model">
+          <option value="qwen-audio-3.0-asr-flash-streaming">qwen-audio-3.0-asr-flash-streaming（推荐，更准）</option>
+          <option value="paraformer-realtime-v2">paraformer-realtime-v2（经典实时）</option>
+        </select>
+      </div>
+      <div class="config-field">
+        <label>热词（逗号分隔，提升人名/专有名词识别）</label>
+        <input id="config-asr-hotwords" type="text" placeholder="芙宁娜,枫丹,周杰伦" autocomplete="off" />
+      </div>
+      <div class="config-tip">
+        在 bailian.console.aliyun.com 开通「实时语音识别」并创建 API Key。
+        Key 仅保存在本机，也可以改用环境变量 DASHSCOPE_API_KEY。
       </div>
     </div>
     <div class="config-tab-page hidden" data-config-page="memory">
@@ -154,6 +175,7 @@
           </div>
           <div id="full-chat-messages"></div>
           <div class="chat-input-row">
+            <button id="full-chat-mic" class="mic-btn" title="按住说话（语音输入）">🎤</button>
             <textarea id="full-chat-input" rows="1" placeholder="和芙宁娜说点什么…（Enter 发送 / Shift+Enter 换行）"></textarea>
             <button id="full-chat-send">发送</button>
           </div>
@@ -207,6 +229,26 @@
             </div>
             <div class="config-tip">
               先在 MiniMax 平台创建 API Key 并用 voice/minimax-furina-voice.mjs 克隆音色。
+            </div>
+            <div class="config-title config-sub-title">语音输入（按住 🎤 说话）</div>
+            <div class="config-field">
+              <label>阿里云百炼 API Key</label>
+              <input id="full-config-asr-apikey" type="password" placeholder="sk-..." autocomplete="off" />
+            </div>
+            <div class="config-field">
+              <label>识别模型</label>
+              <select id="full-config-asr-model">
+                <option value="qwen-audio-3.0-asr-flash-streaming">qwen-audio-3.0-asr-flash-streaming（推荐，更准）</option>
+                <option value="paraformer-realtime-v2">paraformer-realtime-v2（经典实时）</option>
+              </select>
+            </div>
+            <div class="config-field">
+              <label>热词（逗号分隔，提升人名/专有名词识别）</label>
+              <input id="full-config-asr-hotwords" type="text" placeholder="芙宁娜,枫丹,周杰伦" autocomplete="off" />
+            </div>
+            <div class="config-tip">
+              在 bailian.console.aliyun.com 开通「实时语音识别」并创建 API Key。
+              Key 仅保存在本机，也可以改用环境变量 DASHSCOPE_API_KEY。
             </div>
           </div>
           <div class="config-tab-page hidden" data-config-page="memory">

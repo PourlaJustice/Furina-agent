@@ -1,0 +1,83 @@
+{
+    "servers":  [
+                    {
+                        "name":  "filesystem",
+                        "enabled":  true,
+                        "transport":  "stdio",
+                        "command":  "node",
+                        "args":  [
+                                     "node_modules/@modelcontextprotocol/server-filesystem/dist/index.js",
+                                     "."
+                                 ],
+                        "dangerous":  true
+                    },
+                    {
+                        "name":  "playwright",
+                        "enabled":  true,
+                        "transport":  "stdio",
+                        "command":  "node",
+                        "args":  [
+                                     "node_modules/@playwright/mcp/cli.js"
+                                 ],
+                        "dangerous":  true,
+                        "env":  {
+                                    "PLAYWRIGHT_BROWSERS_PATH":  "./ms-playwright"
+                                }
+                    },
+                    {
+                        "name":  "netease-music",
+                        "enabled":  true,
+                        "transport":  "stdio",
+                        "command":  "node",
+                        "args":  [
+                                     "vendor/netease-music-mcp/src/server.js"
+                                 ],
+                        "dangerous":  true
+                    },
+                    {
+                        "name":  "sqlite",
+                        "enabled":  true,
+                        "transport":  "stdio",
+                        "command":  "node",
+                        "args":  [
+                                     "node_modules/mcp-sqlite-server/dist/index.js"
+                                 ],
+                        "dangerous":  true
+                    },
+                    {
+                        "name":  "example-sse",
+                        "enabled":  false,
+                        "transport":  "sse",
+                        "url":  "http://localhost:3000/mcp",
+                        "dangerous":  true
+                    },
+                    {
+                        "name":  "qweather",
+                        "enabled":  true,
+                        "transport":  "stdio",
+                        "command":  "node",
+                        "args":  [
+                                     "node_modules/qweather-mcp/cli.js"
+                                 ],
+                        "env":  {
+                                    "QWEATHER_API_BASE":  "https://YOUR_API_HOST.qweatherapi.com",
+                                    "QWEATHER_API_KEY":  "YOUR_QWEATHER_API_KEY"
+                                },
+                        "dangerous":  false
+                    },
+                    {
+                        "name":  "qwen-vision",
+                        "enabled":  true,
+                        "transport":  "stdio",
+                        "command":  "node",
+                        "args":  [
+                                     "node_modules/qwen-vision-mcp-server/src/index.js"
+                                 ],
+                        "env":  {
+                                    "DASHSCOPE_API_KEY":  "YOUR_DASHSCOPE_API_KEY",
+                                    "QWEN_MODEL":  "qwen3.7-plus"
+                                },
+                        "dangerous":  false
+                    }
+                ]
+}

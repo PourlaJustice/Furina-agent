@@ -34,6 +34,21 @@ export class ChatPanel {
   private ttsApiKeyInput: HTMLInputElement;
   private ttsVoiceIdInput: HTMLInputElement;
   private ttsModelInput: HTMLSelectElement;
+  // 语音输入配置（阿里云百炼）
+  private asrApiKeyInput: HTMLInputElement;
+  private asrModelInput: HTMLSelectElement;
+  private asrHotWordsInput: HTMLInputElement;
+  // 语音输入（按住说话）
+  private micBtn: HTMLButtonElement;
+  private recording = false;
+  private recordingStream: MediaStream | null = null;
+  private audioCtx: AudioContext | null = null;
+  private sourceNode: MediaStreamAudioSourceNode | null = null;
+  private processorNode: ScriptProcessorNode | null = null;
+  private asrSessionId = "";
+  private asrStarted = false;
+  private asrFinalText = "";
+  private asrPartialText = "";
   // 记忆展示
   private memoryBox: HTMLElement;
   private memoryClearBtn: HTMLButtonElement;
@@ -92,6 +107,10 @@ export class ChatPanel {
     this.ttsApiKeyInput = el("config-tts-apikey");
     this.ttsVoiceIdInput = el("config-tts-voiceid");
     this.ttsModelInput = el("config-tts-model");
+    this.asrApiKeyInput = el("config-asr-apikey");
+    this.asrModelInput = el("config-asr-model");
+    this.asrHotWordsInput = el("config-asr-hotwords");
+    this.micBtn = el("chat-mic");
     this.memoryBox = el("chat-memory-box");
     this.memoryClearBtn = el("chat-memory-clear");
     this.kbStatusEl = el("chat-kb-status");
@@ -146,6 +165,7 @@ export class ChatPanel {
     this.kbBrowseBtn.addEventListener("click", () => void this.browseKnowledge());
     this.trustClearBtn.addEventListener("click", () => void this.clearTrustedTools());
     this.musicBtn?.addEventListener("click", () => void window.electronAPI.music.openMini());
+    this.bindMicButton();
 
     this.sendBtn.addEventListener("click", () => void this.send());
     // 点击消息里的链接 → 系统浏览器打开，不让窗口跳走
@@ -207,6 +227,182 @@ export class ChatPanel {
         }
       }),
     );
+    // ---- 语音输入：实时把识别文字填入输入框 ----
+    const asrApi = window.electronAPI.asr;
+    this.unsubscribers.push(
+      asrApi.onPartial(({ sessionId, text }) => {
+        if (sessionId !== this.asrSessionId) return;
+        this.asrPartialText = text;
+        this.updateInputFromAsr();
+      }),
+      asrApi.onFinal(({ sessionId, text }) => {
+        if (sessionId !== this.asrSessionId) return;
+        if (text) this.asrFinalText += text;
+        this.asrPartialText = "";
+        this.updateInputFromAsr();
+      }),
+      asrApi.onError(({ sessionId, message }) => {
+        if (sessionId && sessionId !== this.asrSessionId) return;
+        this.showHint("语音识别出错：" + message);
+      }),
+    );
+  }
+
+  // ================= 语音输入（按住说话） =================
+
+  /** 绑定麦克风按钮：按住开始录音，松开结束并把文字填进输入框 */
+  private bindMicButton(): void {
+    const btn = this.micBtn;
+    btn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      try { btn.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      void this.startRecording();
+    });
+    btn.addEventListener("pointerup", () => {
+      void this.stopRecording();
+    });
+    btn.addEventListener("pointercancel", () => {
+      void this.stopRecording();
+    });
+    btn.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+
+  private async startRecording(): Promise<void> {
+    if (this.recording) return;
+    // 先确认已配置语音识别 API Key
+    try {
+      const cfg = await window.electronAPI.asr.getConfig();
+      if (!cfg.apiKey) {
+        this.showHint("语音输入未配置：请到 ⚙ 设置 → 语音 中填写阿里云百炼 API Key。");
+        return;
+      }
+    } catch {
+      this.showHint("语音输入暂不可用：无法读取语音识别配置。");
+      return;
+    }
+
+    this.recording = true;
+    this.micBtn.classList.add("recording");
+    this.micBtn.textContent = "⏺";
+    this.asrStarted = false;
+    this.asrFinalText = "";
+    this.asrPartialText = "";
+    this.inputEl.placeholder = "正在聆听…松开结束";
+    try {
+      // 打开麦克风（在按住手势里调用，浏览器才允许）
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
+      });
+      if (!this.recording) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      this.recordingStream = stream;
+      // 统一降采样到 16kHz 单声道，符合识别接口要求
+      const Ctx = window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new Ctx({ sampleRate: 16000 });
+      if (!this.recording) {
+        void ctx.close();
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      this.audioCtx = ctx;
+      await ctx.resume();
+      if (!this.recording) {
+        void ctx.close();
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      const source = ctx.createMediaStreamSource(stream);
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      this.sourceNode = source;
+      this.processorNode = processor;
+      processor.onaudioprocess = (e) => {
+        if (!this.recording || !this.asrSessionId) return;
+        const samples = e.inputBuffer.getChannelData(0);
+        const int16 = new Int16Array(samples.length);
+        for (let i = 0; i < samples.length; i++) {
+          const s = Math.max(-1, Math.min(1, samples[i]));
+          int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+        }
+        window.electronAPI.asr.sendAudio(this.asrSessionId, int16.buffer);
+      };
+      source.connect(processor);
+      processor.connect(ctx.destination); // 让处理器被拉取，输出静音不会出声
+
+      // 开启识别会话（音频块会在会话就绪前自动缓冲）
+      const sessionId = await window.electronAPI.asr.start();
+      if (!this.recording) {
+        void window.electronAPI.asr.cancel(sessionId);
+        void ctx.close();
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      this.asrSessionId = sessionId;
+      this.asrStarted = true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.showHint("语音输入启动失败：" + message);
+      this.finishRecording();
+    }
+  }
+
+  private async stopRecording(): Promise<void> {
+    if (!this.recording) return;
+    const sessionId = this.asrSessionId;
+    const started = this.asrStarted;
+    this.finishRecording();
+    if (!sessionId || !started) {
+      this.showHint("没有听到声音，按住 🎤 再试一次吧～");
+      return;
+    }
+    try {
+      const finalText = await window.electronAPI.asr.stop(sessionId);
+      const text = (finalText || this.asrFinalText).trim();
+      this.setInputText(text);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.showHint("语音识别失败：" + message);
+    }
+  }
+
+  /** 结束录音并清理本地音频资源（识别结果由 stop() 收尾） */
+  private finishRecording(): void {
+    this.recording = false;
+    this.asrSessionId = "";
+    this.micBtn.classList.remove("recording");
+    this.micBtn.textContent = "🎤";
+    this.inputEl.placeholder = "和芙宁娜说点什么…（Enter 发送 / Shift+Enter 换行）";
+    try { this.processorNode?.disconnect(); } catch { /* ignore */ }
+    try { this.sourceNode?.disconnect(); } catch { /* ignore */ }
+    try { void this.audioCtx?.close(); } catch { /* ignore */ }
+    this.processorNode = null;
+    this.sourceNode = null;
+    this.audioCtx = null;
+    this.recordingStream?.getTracks().forEach((t) => t.stop());
+    this.recordingStream = null;
+  }
+
+  /** 把识别到的文字实时填进输入框 */
+  private updateInputFromAsr(): void {
+    if (!this.recording) return;
+    const text = (this.asrFinalText + this.asrPartialText).trim();
+    this.inputEl.value = text;
+    this.inputEl.style.height = "auto";
+    this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 84) + "px";
+  }
+
+  /** 识别结束后把最终文字放进输入框 */
+  private setInputText(text: string): void {
+    if (!text) {
+      this.showHint("没听清，按住 🎤 再说一遍吧～");
+      return;
+    }
+    this.inputEl.value = text;
+    this.inputEl.style.height = "auto";
+    this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 84) + "px";
+    this.inputEl.focus();
   }
 
   toggle(): void {
@@ -479,6 +675,10 @@ export class ChatPanel {
     this.ttsApiKeyInput.value = tts.apiKey ?? "";
     this.ttsVoiceIdInput.value = tts.voiceId ?? "";
     this.ttsModelInput.value = tts.model ?? "speech-2.8-hd";
+    const asr = await window.electronAPI.asr.getConfig();
+    this.asrApiKeyInput.value = asr.apiKey ?? "";
+    this.asrModelInput.value = asr.model ?? "qwen-audio-3.0-asr-flash-streaming";
+    this.asrHotWordsInput.value = asr.hotWords ?? "";
     this.configView.classList.remove("hidden");
     this.configView.scrollTop = 0;
     void this.refreshMemory();
@@ -653,6 +853,11 @@ export class ChatPanel {
       voiceId: this.ttsVoiceIdInput.value.trim(),
       model: this.ttsModelInput.value === "speech-2.8-turbo" ? "speech-2.8-turbo" : "speech-2.8-hd",
     });
+    await window.electronAPI.asr.setConfig({
+      apiKey: this.asrApiKeyInput.value.trim(),
+      model: this.asrModelInput.value === "paraformer-realtime-v2" ? "paraformer-realtime-v2" : "qwen-audio-3.0-asr-flash-streaming",
+      hotWords: this.asrHotWordsInput.value.trim(),
+    });
     this.closeConfig();
     this.showHint(
       this.ttsEnabled
@@ -663,6 +868,9 @@ export class ChatPanel {
 
   destroy(): void {
     this.stopSpeech();
+    // 清理录音与会话（窗口关闭时避免残留）
+    if (this.asrSessionId) void window.electronAPI.asr.cancel(this.asrSessionId);
+    if (this.recording) this.finishRecording();
     this.unsubscribers.forEach((unsub) => unsub());
     this.unsubscribers = [];
   }

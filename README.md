@@ -6,6 +6,8 @@ LangChain/LangGraph 编排、MCP 外部服务，再到 Rust 原生截图模块�
 
 > 本项目为学习项目，芙宁娜模型版权归 miHoYo（原神），禁止商用、禁止二次配布。
 
+> 📋 完整功能清单见 [功能清单.md](功能清单.md)
+
 ## ✨ 功能总览
 
 | 模块 | 功能 |
@@ -13,20 +15,25 @@ LangChain/LangGraph 编排、MCP 外部服务，再到 Rust 原生截图模块�
 | 🖼️ 桌宠本体 | 透明无边框置顶窗口、待机动画、程序化眨眼/呼吸、鼠标跟随（眼珠+头部）、单击动作 / 双击表情 / 拖动窗口、高 DPI 渲染 |
 | 💬 AI 聊天 | DeepSeek 流式对话、Markdown 实时渲染、完整芙宁娜人设提示词、独立全屏聊天窗口（模型+聊天同屏）、对话历史保留/清空 |
 | 🎙️ 语音 | MiniMax TTS 逐句合成朗读、朗读时口型同步、支持音色克隆脚本 |
+| 🎤 语音输入 | 按住说话实时转文字（阿里云百炼 qwen-audio），支持热词，提升人名/专有名词识别 |
 | 🎭 动作表情 | 回复中的（动作/表情）描述自动匹配 Live2D 动作表情，与语音进度同步，重听从头播放 |
+| 🎵 网易云音乐 | 点歌、搜歌、歌词、播放控制、迷你点歌台（Web 播放器） |
 | 🧠 记忆系统 | 三层记忆：自动提取用户名字/喜好/近况/目标，长期记住，设置页可查看/清空 |
 | 📚 知识库 RAG | 导入 txt / md / json / csv / pdf / docx / xlsx / pptx，本地离线语义检索 + 关键词检索，内置世界书设定 |
 | 🛠️ Agent 工具 | 18 个内置工具：时间、计算、网页搜索、文件读写删移、打开路径、待办、提醒、天气、屏幕截图；危险操作弹窗确认 |
 | 🔗 LangChain + LangGraph | ReAct Agent 编排（模型决策→调用工具→回填→回答），失败自动回退旧循环 |
-| 🔌 MCP 外部服务 | 通过 MCP 协议连接外部工具服务器（stdio / SSE），配置文件即插即用，默认启用文件系统服务器 |
+| 🔌 MCP 外部服务 | 文件系统、浏览器自动化、网易云音乐、SQLite、和风天气、视觉理解 6 个服务器，共 66 个工具 |
 | 🦀 Rust 原生模块 | DXGI + GDI 双通道截图助手，NDJSON IPC 通信，编译成 exe 供 Node 调用 |
+| 🌤️ 天气 | 内置 2 日天气 + 和风 15 天预报 / 空气质量 / 生活指数 / 预警 |
+| 👀 视觉理解 | Rust 截屏 + 千问视觉模型看图 / OCR，芙宁娜能看懂屏幕 |
+| 🗄️ 数据库 | SQLite 持久化聊天记录 / 会话 / 统计，支持直接查询 |
 
 ## 🛠️ 技术栈
 
 - **框架**：Electron 43 + TypeScript 5 + Vite 5 + Node 24
 - **渲染**：PixiJS 7 + pixi-live2d-display 0.5.0-beta + Cubism Core
 - **LLM**：DeepSeek Chat Completions（SSE 流式）+ LangChain 1.x + LangGraph 1.x
-- **语音**：MiniMax Speech（语音合成 + 音色克隆）
+- **语音**：MiniMax Speech（语音合成 + 音色克隆）、阿里云百炼 qwen-audio（语音识别）
 - **MCP**：@modelcontextprotocol/sdk（stdio / SSE 双传输）
 - **文档解析**：mammoth（docx）、unpdf（pdf）、xlsx（excel）、jszip、markdown-it
 - **原生模块**：Rust 1.97 + windows crate（DXGI / GDI / WIC）
@@ -115,10 +122,19 @@ npm run dev
 - **语音（MiniMax）**：设置里填入 API Key、音色 ID，勾选启用；音色克隆见
   `voice/minimax-furina-voice.mjs`
 - **知识库**：设置页导入文件/文件夹即可
-- **MCP**：编辑 `mcp-servers.json`，按需启用服务器
+- **MCP**：编辑 `mcp-servers.json`，按需启用服务器（已内置 filesystem、playwright、netease-music、sqlite、qweather 和风天气）；和风天气需在 [QWeather 控制台](https://console.qweather.com/) 申请免费 Key，填入 qweather 条目中的 `QWEATHER_API_KEY` 后重启；qwen-vision 视觉工具复用百炼 DashScope Key（`mcp-servers.json` 含密钥、不提交 git，模板见 `mcp-servers.example.json`）
 - **屏幕截图**：首次使用前运行 `npm run build:screenshot-helper` 编译 Rust 助手
   （构建产物在 `resources/bin/`，已加入 .gitignore）
 
+
+## 📦 全量打包（发给信任的开发者）
+
+运行根目录的 `打包.bat`，会把**全部内容**（源码、依赖 node_modules、Live2D 模型、内置便携 Node 24、Playwright 浏览器、网易云播放器、密钥配置）压缩成 `Furina-agent-full-package.zip` 放到项目上级目录。收件人解压后双击 `一键启动.bat` 即可运行，无需安装任何软件。
+
+- 收件人开发：解压后直接改源码，重新双击 `一键启动.bat`（自动重新构建）
+- 同步开发建议配合 GitHub 仓库（压缩包不含 .git 历史）
+- 注意：包内含 API Key / 网易云 Cookie 等个人凭据，仅限信任者使用，勿公开分享
+- 如需去掉某个服务，在 `mcp-servers.json` 中把对应条目 `enabled` 改为 `false`
 ## 🧰 Agent 工具列表
 
 | 分类 | 工具 | 说明 |

@@ -40,3 +40,13 @@ resources/bin/
 
 # Playwright MCP outputs
 .playwright-mcp/
+
+# 本地 MCP 配置（含 API Key 等凭据，不提交；模板见 mcp-servers.example.json）
+mcp-servers.json
+
+# ★ 全量打包相关：体积大或含个人数据，不提交 git（由 打包.bat 全量带上）
+node-portable/
+ms-playwright/
+vendor/
+data/
+_打包临时目录/

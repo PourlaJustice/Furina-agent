@@ -250,6 +250,35 @@
   cursor: not-allowed;
 }
 
+/* 语音输入麦克风按钮 */
+.mic-btn {
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 11px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #c4cde4;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.mic-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+.mic-btn.recording {
+  background: rgba(255, 90, 110, 0.9);
+  color: #fff;
+  box-shadow: 0 0 14px rgba(255, 90, 110, 0.65);
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
 /* 设置弹层 */
 #chat-config-view, #full-chat-config-view {
   position: fixed;
@@ -285,6 +314,12 @@
   font-weight: 600;
   margin-bottom: 12px;
   text-align: center;
+}
+.config-sub-title {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(140, 160, 255, 0.2);
+  font-size: 13px;
 }
 .config-field {
   display: flex;

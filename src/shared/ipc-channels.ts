@@ -26,6 +26,16 @@ export const IPC_CHANNELS = {
   TTS_SPEAK: 'tts:speak',          // 渲染进程 → 主进程：合成一句语音 → 返回 base64
   TTS_CONFIG_GET: 'tts:config:get',
   TTS_CONFIG_SET: 'tts:config:set',
+  // ---- 语音输入（阿里云百炼实时语音识别） ----
+  ASR_START: 'asr:start',          // 渲染进程 → 主进程：开启识别会话，返回 sessionId
+  ASR_AUDIO: 'asr:audio',          // 渲染进程 → 主进程：发送 16k PCM 音频块
+  ASR_STOP: 'asr:stop',            // 渲染进程 → 主进程：结束识别，返回最终文本
+  ASR_CANCEL: 'asr:cancel',        // 渲染进程 → 主进程：放弃识别
+  ASR_CONFIG_GET: 'asr:config:get',
+  ASR_CONFIG_SET: 'asr:config:set',
+  ASR_EVENT_PARTIAL: 'asr:partial', // 主进程 → 渲染进程：中间结果
+  ASR_EVENT_FINAL: 'asr:final',     // 主进程 → 渲染进程：句子完成
+  ASR_EVENT_ERROR: 'asr:error',     // 主进程 → 渲染进程：识别出错
   // ---- 三层记忆系统 ----
   MEMORY_GET: 'memory:get',
   MEMORY_CLEAR: 'memory:clear',

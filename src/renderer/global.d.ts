@@ -1,6 +1,6 @@
 export {};
 
-import type { ChatConfig, KnowledgeStatus, MemoryInfo } from "../shared/chat-types";
+import type { AsrConfig, ChatConfig, KnowledgeStatus, MemoryInfo } from "../shared/chat-types";
 
 declare global {
   interface Window {
@@ -25,6 +25,17 @@ declare global {
         onDone: (cb: (payload: { text: string }) => void) => () => void;
         onError: (cb: (payload: { message: string }) => void) => () => void;
         onTool: (cb: (payload: { name: string; status: string; summary: string }) => void) => () => void;
+      };
+      asr: {
+        start: () => Promise<string>;
+        sendAudio: (sessionId: string, data: ArrayBuffer) => void;
+        stop: (sessionId: string) => Promise<string>;
+        cancel: (sessionId: string) => Promise<boolean>;
+        getConfig: () => Promise<AsrConfig>;
+        setConfig: (patch: AsrConfig) => Promise<AsrConfig>;
+        onPartial: (cb: (payload: { sessionId: string; text: string }) => void) => () => void;
+        onFinal: (cb: (payload: { sessionId: string; text: string }) => void) => () => void;
+        onError: (cb: (payload: { sessionId: string; message: string }) => void) => () => void;
       };
       memory: {
         get: () => Promise<MemoryInfo>;

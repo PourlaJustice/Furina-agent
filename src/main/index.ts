@@ -1,10 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen, session, shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import type { ChatMessage } from '../shared/chat-types';
 import { loadChatConfig, resolveChatConfig, saveChatConfig, streamDeepSeek, trimHistory } from './deepseek';
 import { resolveTtsConfig, saveTtsConfig, speakWithConfig } from './tts';
+import { abortAsr, resolveAsrConfig, saveAsrConfig, sendAsrAudio, startAsr, stopAsr } from './asr';
 import { buildMemoryContext, clearMemory, getMemoryInfo, rememberFromTurn } from './memory';
 import { isToolIntent, runAgent } from './agent';
 import { runLangGraph } from './ai/graph';
@@ -289,7 +290,10 @@ const FURINA_SYSTEM_PROMPT = `你是芙宁娜·德·枫丹，来自《原神》�
 
 ## 可用工具（重要）
 11. 你有很多真实可用的工具。当用户要求播放音乐、点歌、听歌、放歌、切歌、暂停、继续、停止、调整音量、搜索歌曲、查看歌词或歌单时，必须调用 netease-music 音乐工具（netease-music__play_song / netease-music__search_song / netease-music__pause / netease-music__resume / netease-music__next_song / netease-music__get_listening_context / netease-music__open_web_player 等）。第一次播放前先调用 netease-music__open_web_player，并把返回的本地播放器地址告诉用户；播放成功后调用 netease-music__get_listening_context，把正在播放的歌名、歌手和当前歌词自然地讲给用户。工具会完成实际操作，你负责配合演出和转述。 点歌必须真实执行：用户要求播放/切歌/搜索歌曲时，必须先调用工具并等它成功，再回复；没有真正播放就不要说"已经在放了"。搜索关键词要具体，用"歌名 + 歌手"（例如用户说"2024英雄联盟全球总决赛主题曲"，先确定歌名是 Heavy Is The Crown，再用 "Heavy Is The Crown Linkin Park" 搜索播放）。如果搜到的第一首明显不是用户要的歌，继续挑选最匹配的，或明确告诉用户找到的是哪首、是否继续。
-12. 当用户要求打开网页、搜索资料、查询天气、查看或整理文件、截图、设置待办提醒时，同样调用对应的内置工具或 MCP 工具，而不是说自己做不到。`;
+12. 当用户要求打开网页、搜索资料、查询天气、查看或整理文件、截图、设置待办提醒时，同样调用对应的内置工具或 MCP 工具，而不是说自己做不到。
+13. 你还有一个 SQLite 数据库工具（sqlite__query / sqlite__schema / sqlite__table_info / sqlite__explain / sqlite__list_databases）。数据库文件是项目里的 data/furina.db，已有三张表：chat_messages（聊天记录）、chat_sessions（会话）、agent_stats（统计）。用户要保存或查询聊天记录、做统计、让你记住数据时，就用这些工具：查询时调用 sqlite__query，参数 {db:"data/furina.db", sql:"SELECT ..."}；要写入（INSERT/UPDATE/DELETE）时，除了 db 和 sql，还必须传 readonly:false；不确定表结构时先调用 sqlite__schema 查看。
+14. 当用户询问天气、空气质量、天气预报、生活指数（穿衣/运动/洗车/紫外线等）或天气预警时，调用和风天气工具（qweather__get-weather-now 实时天气、qweather__get-weather-forecast 预报（days 可选 3d/7d/10d/15d/30d）、qweather__get-air-quality 空气质量、qweather__get-weather-indices 生活指数（type 3 为穿衣指数）、qweather__get-weather-warning 天气预警），城市用中文名传 cityName（例如"北京"）。这些工具无需用户确认，直接调用并把结果自然转述；查询失败就如实说暂时查不到。
+15. 当用户要求你"看看屏幕/桌面/窗口/图片"、识别图中文字（OCR）或分析截图内容时：先用内置截图工具 screen_shot 截屏（可传 save_path 指定保存位置，返回图片路径；用户给了现成图片路径就跳过这步），再用 qwen-vision__qwen_vision_understand 分析（参数 image 传完整图片路径，prompt 用中文写清楚要看什么），最后把结果用中文自然转述，识别到文字就直接念出来。这是你的"眼睛"，不要说看不到。`;
 
 // 每个渲染窗口独立的对话历史
 const chatHistories = new Map<number, ChatMessage[]>();
@@ -522,6 +526,57 @@ function registerKnowledgeIpc(): void {
 registerChatIpc();
 registerTtsIpc();
 
+/** 注册语音输入 IPC（阿里云百炼实时语音识别） */
+function registerAsrIpc(): void {
+
+  // 记录每个窗口开启的识别会话，窗口关闭时自动清理
+  const ownerSessions = new Map<number, Set<string>>();
+  ipcMain.handle(IPC_CHANNELS.ASR_START, (event) => {
+    const cfg = resolveAsrConfig();
+    if (!cfg.apiKey) {
+      throw new Error('未配置阿里云百炼 API Key（请到 ⚙ 设置 → 语音 中填写）');
+    }
+    const sessionId = startAsr(cfg, {
+      onPartial: (text) => event.sender.send(IPC_CHANNELS.ASR_EVENT_PARTIAL, { sessionId, text }),
+      onFinal: (text) => event.sender.send(IPC_CHANNELS.ASR_EVENT_FINAL, { sessionId, text }),
+      onError: (message) => event.sender.send(IPC_CHANNELS.ASR_EVENT_ERROR, { sessionId, message }),
+    });
+    const set = ownerSessions.get(event.sender.id) ?? new Set<string>();
+    set.add(sessionId);
+    ownerSessions.set(event.sender.id, set);
+    event.sender.once('destroyed', () => {
+      for (const id of [...(ownerSessions.get(event.sender.id) ?? [])]) abortAsr(id);
+      ownerSessions.delete(event.sender.id);
+    });
+    return sessionId;
+  });
+  // 音频块走 send（高频、不需返回值）
+  ipcMain.on(IPC_CHANNELS.ASR_AUDIO, (event, sessionId: unknown, data: unknown) => {
+    sendAsrAudio(String(sessionId ?? ''), data);
+  });
+  ipcMain.handle(IPC_CHANNELS.ASR_STOP, (event, sessionId: unknown) => {
+    const sid = String(sessionId ?? '');
+    ownerSessions.get(event.sender.id)?.delete(sid);
+    return stopAsr(sid);
+  });
+  ipcMain.handle(IPC_CHANNELS.ASR_CANCEL, (event, sessionId: unknown) => {
+    const sid = String(sessionId ?? '');
+    ownerSessions.get(event.sender.id)?.delete(sid);
+    abortAsr(sid);
+    return true;
+  });
+  ipcMain.handle(IPC_CHANNELS.ASR_CONFIG_GET, () => resolveAsrConfig());
+  ipcMain.handle(IPC_CHANNELS.ASR_CONFIG_SET, (_event, patch: unknown) => {
+    const obj = patch && typeof patch === 'object' ? (patch as Record<string, unknown>) : {};
+    const clean: Record<string, unknown> = {};
+    if (typeof obj.apiKey === 'string') clean.apiKey = obj.apiKey.trim();
+    if (obj.model === 'qwen-audio-3.0-asr-flash-streaming' || obj.model === 'paraformer-realtime-v2') clean.model = obj.model;
+    if (typeof obj.hotWords === 'string') clean.hotWords = obj.hotWords.trim();
+    return saveAsrConfig(clean);
+  });
+}
+registerAsrIpc();
+
 // ---- 迷你点歌台悬浮窗 ----
 let musicMiniWindow: BrowserWindow | null = null;
 
@@ -575,6 +630,11 @@ registerMemoryIpc();
 registerKnowledgeIpc();
 
 app.whenReady().then(() => {
+  // 允许渲染进程使用麦克风（语音输入）
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === 'media');
+  });
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => permission === 'media');
   initTasks();
   void initMcp(); // MCP 外部工具服务器（阶段 8） // 恢复待办与提醒
   createWindow();
