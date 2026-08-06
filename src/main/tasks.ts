@@ -1,5 +1,5 @@
 // 待办 + 提醒：数据保存在 userData/tasks.json，提醒到点弹系统通知
-import { app, Notification } from 'electron';
+import { app, BrowserWindow, Notification } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -24,6 +24,13 @@ interface TaskStore {
 }
 
 const MAX_TIMEOUT = 2147483647; // setTimeout 单次上限（约 24.8 天）
+const PRUNE_MS = 7 * 24 * 3600 * 1000; // 已触发提醒保留 7 天后清理
+
+/** 提醒触发回调（主进程注入：用于把提醒同步推送到聊天窗口，双重提醒） */
+let reminderListener: ((text: string, dueAt: number) => void) | null = null;
+export function onReminderFired(cb: (text: string, dueAt: number) => void): void {
+  reminderListener = cb;
+}
 
 let store: TaskStore = { todos: [], reminders: [] };
 let storePath = '';
@@ -115,6 +122,28 @@ function parseDueTime(input: string): number | null {
     return d.getTime();
   }
 
+  // 中文时段：明天下午3点 / 下午3点 / 3点 / 晚上8点半 / 3点30分
+  const cn = s.match(/^(明天|后天|今晚)?\s*(凌晨|上午|中午|下午|晚上)?\s*(\d{1,2})\s*点(?:\s*(\d{1,2})\s*分?|半)?$/);
+  if (cn) {
+    const d = new Date(now);
+    if (cn[1] === '明天') d.setDate(d.getDate() + 1);
+    if (cn[1] === '后天') d.setDate(d.getDate() + 2);
+    let hour = Number(cn[3]);
+    const minute = cn[4] !== undefined ? Number(cn[4]) : s.includes('半') ? 30 : 0;
+    const period = cn[2];
+    if (period === '下午' || period === '晚上') {
+      if (hour < 12) hour += 12;
+    } else if (period === '凌晨') {
+      if (hour === 12) hour = 0;
+    } else if (period === '中午') {
+      if (hour < 12) hour += 12;
+    }
+    if (hour === 24) hour = 0;
+    d.setHours(hour, minute, 0, 0);
+    if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1);
+    return d.getTime();
+  }
+
   return null;
 }
 
@@ -131,18 +160,32 @@ function fireReminder(rem: ReminderItem): void {
   clearTimer(rem.id);
   rem.fired = true;
   saveStore();
+  let toast = false;
   try {
     if (Notification.isSupported()) {
       const n = new Notification({
         title: '芙宁娜提醒你',
         body: `⏰ ${rem.text}\n（${fmtTime(rem.dueAt)}）`,
       });
+      // 点击通知 → 聚焦桌宠窗口
+      n.on('click', () => {
+        const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && x.isVisible());
+        w?.show();
+        w?.focus();
+      });
       n.show();
+      toast = true;
     }
   } catch {
     // 通知失败就只写日志
   }
-  console.log(`[Tasks] 提醒触发: ${rem.text} (${fmtTime(rem.dueAt)})`);
+  console.log(`[Tasks] 提醒触发: ${rem.text} (${fmtTime(rem.dueAt)})${toast ? '' : '（系统通知未显示，已推送到聊天窗）'}`);
+  // ★ 双保险：无论系统通知是否成功，都推送到聊天窗口
+  try {
+    reminderListener?.(rem.text, rem.dueAt);
+  } catch {
+    // 忽略
+  }
 }
 
 function scheduleReminder(rem: ReminderItem): void {
@@ -168,6 +211,8 @@ export function initTasks(): void {
   for (const r of store.reminders) {
     if (!r.fired && r.dueAt <= now) r.fired = true;
   }
+  // 清理 7 天前的已触发提醒，防止 tasks.json 无限膨胀
+  store.reminders = store.reminders.filter((r) => !r.fired || now - r.dueAt < PRUNE_MS);
   saveStore();
   for (const r of store.reminders) scheduleReminder(r);
   console.log(`[Tasks] 已载入 ${store.todos.length} 条待办、${store.reminders.filter((r) => !r.fired).length} 个待触发提醒`);

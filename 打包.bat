@@ -10,7 +10,7 @@ rd /s /q "%STAGEPARENT%" 2>nul
 robocopy "%ROOT%" "%STAGE%" /E /XD "%ROOT%\.git" "%ROOT%\dist" "%ROOT%\screenshots" /XF *.log renderer-log.txt furina-window.png /NFL /NDL /NJH /NP >nul
 echo [2/3] Compressing (large, a few minutes)...
 if exist "%ZIP%" del /f /q "%ZIP%"
-tar -a -c -f "%ZIP%" -C "%STAGEPARENT%" .
+tar -a -c -f "%ZIP%" -C "%STAGEPARENT%" Furina-agent
 echo [3/3] Done! Package created:
 echo     %ZIP%
 rd /s /q "%STAGEPARENT%" 2>nul

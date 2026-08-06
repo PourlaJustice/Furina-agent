@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>芙宁娜 · 互动菜单</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: transparent !important;
+      user-select: none;
+    }
+    /* 半透明毛玻璃面板 */
+    #pet-menu {
+      position: fixed;
+      inset: 4px;
+      display: flex;
+      flex-direction: column;
+      background: rgba(10, 14, 26, 0.45);
+      backdrop-filter: blur(14px) saturate(150%);
+      -webkit-backdrop-filter: blur(14px) saturate(150%);
+      border: 1px solid rgba(160, 130, 255, 0.3);
+      border-radius: 14px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+      padding: 8px;
+    }
+    .pet-menu-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 2px 2px 8px;
+      cursor: move;
+      -webkit-app-region: drag; /* 原生拖动整个悬浮窗 */
+      touch-action: none;
+    }
+    .pet-menu-title button {
+      -webkit-app-region: no-drag;
+      background: none;
+      border: none;
+      color: rgba(220, 228, 255, 0.85);
+      font-size: 13px;
+      line-height: 1;
+      padding: 3px 6px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.12s ease, color 0.12s ease;
+    }
+    .pet-menu-title button:hover {
+      color: #ff9aa6;
+      background: rgba(255, 120, 140, 0.14);
+    }
+    .pet-menu-section {
+      color: #b9c6e8;
+      font-size: 11px;
+      padding: 4px 6px;
+    }
+    .pet-menu-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 0 4px 6px;
+    }
+    .pet-menu-item {
+      -webkit-app-region: no-drag;
+      border: 1px solid rgba(140, 160, 255, 0.22);
+      background: rgba(120, 150, 255, 0.08);
+      color: #dfe6ff;
+      font-size: 12px;
+      border-radius: 8px;
+      padding: 5px 8px;
+      cursor: pointer;
+      transition: background 0.12s ease, transform 0.12s ease;
+      flex: 1 1 auto;
+    }
+    .pet-menu-item:hover {
+      background: rgba(120, 150, 255, 0.3);
+      transform: scale(1.04);
+    }
+    .pet-menu-commands .pet-menu-item {
+      flex: 1 1 40%;
+      text-align: center;
+    }
+    .pet-menu-commands .pet-menu-item:last-child {
+      color: #ff9aa6;
+      border-color: rgba(255, 120, 140, 0.35);
+    }
+    .pet-menu-divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.1);
+      margin: 2px 6px 6px;
+    }
+  </style>
+</head>
+<body>
+  <div id="pet-menu">
+    <div class="pet-menu-title">
+      <span>✦ 芙宁娜 · 互动</span>
+      <button id="menu-close" title="关闭">✕</button>
+    </div>
+    <div class="pet-menu-section">😊 表情</div>
+    <div class="pet-menu-grid" id="expr-grid"></div>
+    <div class="pet-menu-section">🎬 动作</div>
+    <div class="pet-menu-grid" id="motion-grid"></div>
+    <div class="pet-menu-divider"></div>
+    <div class="pet-menu-grid pet-menu-commands">
+      <button class="pet-menu-item" data-cmd="chat">💬 聊天</button>
+      <button class="pet-menu-item" data-cmd="settings">⚙ 设置</button>
+      <button class="pet-menu-item" data-cmd="music">🎵 点歌台</button>
+      <button class="pet-menu-item" data-cmd="quit">退出</button>
+    </div>
+  </div>
+  <script type="module" src="./pet-menu-window.ts"></script>
+</body>
+</html>

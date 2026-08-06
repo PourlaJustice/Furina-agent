@@ -15,8 +15,8 @@ declare global {
 const fullMode = new URLSearchParams(location.search).get("mode") === "full";
 const modelPath = "/models/furina/" + encodeURIComponent("芙宁娜.model3.json");
 
-async function initManager(canvas: HTMLCanvasElement, width: number, height: number): Promise<Live2DManager> {
-  const manager = new Live2DManager(canvas, width, height);
+async function initManager(canvas: HTMLCanvasElement, width: number, height: number, petInteractions = true): Promise<Live2DManager> {
+  const manager = new Live2DManager(canvas, width, height, petInteractions);
   try {
     await manager.init(modelPath);
   } catch (err) {
@@ -36,7 +36,8 @@ async function initFullMode(): Promise<void> {
   // 模型铺满左侧区域：初始用容器尺寸（模型放大，看得更清）
   const initW = Math.max(modelEl.clientWidth, 400);
   const initH = Math.max(modelEl.clientHeight, 500);
-  const manager = await initManager(canvas, initW, initH);
+  // ★ 聊天模式：关闭宠物互动（无点击/悬停/随机动作/右键），专注对话与 Agent 服务
+  const manager = await initManager(canvas, initW, initH, false);
   manager.setShoePeek(); // 脚部微露：鞋子露出一部分
 
   const chatPanel = new ChatPanel(
@@ -79,6 +80,8 @@ async function initPetMode(): Promise<void> {
   if (!canvas) throw new Error("Canvas #live2d-canvas not found");
 
   const manager = await initManager(canvas, window.innerWidth, window.innerHeight);
+  // ★ 桌宠窗口默认布局：从鞋子一半开始向上显示
+  manager.enableHalfShoeMode();
   // 诊断：模型 scale 与窗口尺寸
   setInterval(() => {
     console.log(
@@ -100,6 +103,21 @@ async function initPetMode(): Promise<void> {
   // ⛶ 打开独立全屏聊天窗口
   document.getElementById("chat-fullscreen")!.addEventListener("click", () => {
     void window.electronAPI.window.openFullChat();
+  });
+
+  // ★ 桌宠模式专属：右键打开独立互动菜单窗（可在桌面任意位置打开/拖动）
+  canvas.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    void window.electronAPI.petmenu.open(e.screenX, e.screenY);
+  });
+  // 菜单窗命令：表情/动作 → Live2D 执行；聊天/设置/音乐 → 打开对应面板
+  window.electronAPI.petmenu.onCommand((cmd) => {
+    // ★ 表情/动作走串行队列：一次只做一个，做完复位再做下一个，避免叠加（三只手）
+    if (cmd.startsWith("expr:")) window.furinaLive2d?.playMenuExpression(cmd.slice(5));
+    else if (cmd.startsWith("motion:")) window.furinaLive2d?.playMenuMotion(cmd.slice(7));
+    else if (cmd === "chat") window.furinaChat?.setVisible(true);
+    else if (cmd === "settings") void window.furinaChat?.openSettings();
+    else if (cmd === "music") void window.electronAPI.music.openMini();
   });
 
   // 拖拽窗口：按住角色拖动整个窗口
@@ -180,6 +198,11 @@ function initDangerOverlay(): void {
 }
 
 initDangerOverlay();
+
+// 提醒触发：在聊天窗显示（无论面板是否打开，消息会保留到打开时可见）
+window.electronAPI.tasks.onReminder(({ text }) => {
+  window.furinaChat?.showReminder(text);
+});
 if (fullMode) {
   void initFullMode();
 } else {

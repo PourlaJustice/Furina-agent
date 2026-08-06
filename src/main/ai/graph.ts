@@ -1,8 +1,8 @@
-import { ChatDeepSeek } from '@langchain/deepseek';
+import { ChatOpenAI } from '@langchain/openai';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 
 import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { resolveChatConfig } from '../deepseek';
+import { providerLabel, resolveChatConfig } from '../deepseek';
 import { buildLangChainTools, setToolStatusHandler } from './tools';
 import type { ToolStatusHandler } from './tools';
 
@@ -26,13 +26,14 @@ export function getAgentGraph(): Promise<AgentGraph> {
     graphPromise = (async () => {
       const cfg = resolveChatConfig();
       if (!cfg.apiKey) {
-        throw new Error('未配置 DeepSeek API Key。请到设置中填写后重试。');
+        throw new Error(`未配置 ${providerLabel(cfg.provider)} API Key。请到设置中填写后重试。`);
       }
-      const llm = new ChatDeepSeek({
+      const llm = new ChatOpenAI({
         model: cfg.model,
         apiKey: cfg.apiKey,
         temperature: 0.8,
         maxRetries: 2,
+        configuration: { baseURL: cfg.baseUrl },
       });
       const tools = buildLangChainTools();
       const graph = createReactAgent({ llm, tools, version: 'v1' });

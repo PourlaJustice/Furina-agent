@@ -3,13 +3,8 @@ import { Live2DModel } from "pixi-live2d-display/cubism4";
 import type { ConversationAction } from "./actions";
 
 // 芙宁娜模型的动作列表（motions/ 目录）
-// 待机动画含 Param128(0→900) 疑似导致无限放大，点击动作改用有面部动画的摊手
-const MOTION_NAMES = ["摊手动画", "变芒", "变荒"] as const;
-// 芙宁娜模型的表情列表（expressions/ 目录）
-const EXPRESSION_NAMES = [
-  "星星", "小脸红", "生气", "哭", "捂嘴", "托脸",
-  "呆毛电风扇", "喝饮料", "拿蛋糕", "拿勺子", "猫猫嘴", "汗",
-] as const;
+// 动作/表情清单在 live2d/names.ts（桌宠菜单窗口共用）
+import { EXPRESSION_NAMES, MOTION_NAMES } from "./names";
 
 function randomOf<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -34,6 +29,8 @@ export class Live2DManager {
   private blinkStart = 0;
   private nextBlinkAt = 0;
   private chatMode = false;
+  /** 桌宠窗口是否启用“从鞋子一半向上显示”布局 */
+  private halfShoeMode = false;
   private speakingTimer: ReturnType<typeof setInterval> | null = null;
   private baseBounds: PIXI.Rectangle | null = null;
   /** 手势动画结束时间（期间暂停头部鼠标跟随，避免互相覆盖） */
@@ -56,6 +53,8 @@ export class Live2DManager {
     private canvas: HTMLCanvasElement,
     private width: number,
     private height: number,
+    /** 是否启用宠物互动（单击/悬停/随机动作/右键菜单回调）。全屏聊天模式传 false */
+    private petInteractions = true,
   ) {}
 
   async init(modelPath: string): Promise<void> {
@@ -425,9 +424,9 @@ export class Live2DManager {
     this.model.hitArea = new PIXI.Rectangle(bounds.x, bounds.y, bounds.width, bounds.height);
   }
 
-  /** 交互：单击随机动作，双击随机表情 */
+  /** 交互：单击随机动作，双击随机表情（仅桌宠模式启用） */
   private setupInteractions(): void {
-    if (!this.model) return;
+    if (!this.model || !this.petInteractions) return;
 
     this.model.on("pointertap", () => {
       const now = Date.now();
@@ -450,8 +449,9 @@ export class Live2DManager {
     });
   }
 
-  /** 空闲随机动作：每 25~45 秒播放一个动作，避免角色呆住 */
+  /** 空闲随机动作：每 25~45 秒播放一个动作，避免角色呆住（仅桌宠模式） */
   private setupIdleMotions(): void {
+    if (!this.petInteractions) return;
     const schedule = () => {
       this.idleTimer = setTimeout(() => {
         if (Math.random() < 0.7) {
@@ -526,6 +526,34 @@ export class Live2DManager {
   }
 
   /**
+   * ★ 从鞋子一半向上显示（桌宠窗口默认布局）：
+   * 模型整体站立适配窗口，底部在鞋中部裁切，露出上半截鞋子。
+   */
+  setHalfShoe(): void {
+    if (!this.model) return;
+    const base = this.baseBounds ?? this.model.getLocalBounds();
+    if (base.width <= 0 || base.height <= 0) return;
+    const s = Math.min(this.width / base.width, this.height / base.height) * 0.98;
+    this.model.scale.set(s);
+    this.model.x = (this.width - base.width * s) / 2 - base.x * s;
+    // 底部：脚底伸到窗口下方约 6% 处（鞋子的下半部分被裁切）
+    const bottomLocal = base.y + base.height;
+    const cut = this.height * 0.06;
+    this.model.y = this.height + cut - bottomLocal * s;
+    // 顶部：头部不顶到窗口上沿
+    const topY = this.model.y + base.y * s;
+    if (topY < this.height * 0.04) {
+      this.model.y = this.height * 0.04 - base.y * s;
+    }
+  }
+
+  /** 开启桌宠窗口的“半鞋显示”布局（聊天面板关闭时生效） */
+  enableHalfShoeMode(): void {
+    this.halfShoeMode = true;
+    if (!this.chatMode) this.setHalfShoe();
+  }
+
+  /**
    * ★ 脚部微露：模型放大，脚部/鞋子在区域底部露出一部分（人物出镜感）
    * 适用于全屏聊天窗口的模型区
    */
@@ -574,6 +602,8 @@ export class Live2DManager {
     // 按当前聊天模式重新布局，模型大小与当前窗口尺寸下的表现完全一致
     if (this.chatMode) {
       this.fitToWindow(0.62, 0.03);
+    } else if (this.halfShoeMode) {
+      this.setHalfShoe();
     } else {
       this.fitToWindow(1.9, 0.12);
     }
@@ -587,6 +617,8 @@ export class Live2DManager {
     this.chatMode = on;
     if (on) {
       this.fitToWindow(0.62, 0.03);
+    } else if (this.halfShoeMode) {
+      this.setHalfShoe();
     } else {
       this.fitToWindow(1.9, 0.12);
     }
@@ -602,6 +634,16 @@ export class Live2DManager {
     console.log("[Furina] conversation action queued:", action.label);
     this.actionQueue.push(action);
     void this.drainActionQueue();
+  }
+
+  /** 桌宠右键菜单：表情（进入串行队列，避免与动作/语音重叠） */
+  playMenuExpression(name: string): void {
+    this.playConversationAction({ label: name, expression: name });
+  }
+
+  /** 桌宠右键菜单：动作（进入串行队列，做完复位再播下一个） */
+  playMenuMotion(name: string): void {
+    this.playConversationAction({ label: name, motion: name });
   }
 
   /** 语音重新播放时清空待播放的动作队列，让动作从头开始 */

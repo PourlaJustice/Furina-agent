@@ -825,3 +825,19 @@ body.mode-full #chat-toggle { display: none; }
   color: #ff9aa6;
   border-color: rgba(255, 120, 140, 0.35);
 }
+
+
+/* ===== 手机提醒设置区 ===== */
+.phone-status {
+  flex: 1;
+  font-size: 12px;
+  color: #9aa8d8;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-phone-group.hidden {
+  display: none;
+}

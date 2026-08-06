@@ -7,7 +7,7 @@ import MarkdownIt from "markdown-it";
 import "./chat.css";
 import { extractActionSegments, parseConversationAction } from "../live2d/actions";
 import type { ConversationAction } from "../live2d/actions";
-import type { KnowledgeStatus, MemoryInfo } from "../../shared/chat-types";
+import { LLM_PROVIDERS, type KnowledgeStatus, type MemoryInfo } from "../../shared/chat-types";
 
 /** 聊天状态回调：面板开关变化时通知 Live2D 切换布局 */
 export interface ChatCallbacks {
@@ -29,6 +29,7 @@ export class ChatPanel {
   private apiKeyInput: HTMLInputElement;
   private baseUrlInput: HTMLInputElement;
   private modelInput: HTMLInputElement;
+  private providerInput: HTMLSelectElement;
   // 语音配置输入
   private ttsEnabledInput: HTMLInputElement;
   private ttsApiKeyInput: HTMLInputElement;
@@ -62,6 +63,15 @@ export class ChatPanel {
   private trustListEl: HTMLElement;
   private trustClearBtn: HTMLButtonElement;
   private musicBtn: HTMLButtonElement | null;
+  // 手机提醒（ntfy / Bark）
+  private phoneEnabledInput: HTMLInputElement;
+  private phoneChannelInput: HTMLSelectElement;
+  private phoneTopicInput: HTMLInputElement;
+  private phoneServerInput: HTMLInputElement;
+  private phoneBarkInput: HTMLInputElement;
+  private phoneSoundInput: HTMLInputElement;
+  private phoneTestBtn: HTMLButtonElement;
+  private phoneStatusEl: HTMLElement;
 
   private md: MarkdownIt;
   private visible = false;
@@ -103,6 +113,7 @@ export class ChatPanel {
     this.apiKeyInput = el("config-apikey");
     this.baseUrlInput = el("config-baseurl");
     this.modelInput = el("config-model");
+    this.providerInput = el("config-provider");
     this.ttsEnabledInput = el("config-tts-enabled");
     this.ttsApiKeyInput = el("config-tts-apikey");
     this.ttsVoiceIdInput = el("config-tts-voiceid");
@@ -121,6 +132,14 @@ export class ChatPanel {
     this.trustListEl = el("chat-trust-list");
     this.trustClearBtn = el("chat-trust-clear");
     this.musicBtn = maybe("chat-music");
+    this.phoneEnabledInput = el("config-phone-enabled");
+    this.phoneChannelInput = el("config-phone-channel");
+    this.phoneTopicInput = el("config-phone-topic");
+    this.phoneServerInput = el("config-phone-server");
+    this.phoneBarkInput = el("config-phone-bark");
+    this.phoneSoundInput = el("config-phone-sound");
+    this.phoneTestBtn = el("config-phone-test");
+    this.phoneStatusEl = el("config-phone-status");
 
     // Markdown 渲染：关闭 html，保留链接与换行
     this.md = new MarkdownIt({ html: false, breaks: true, linkify: true });
@@ -128,11 +147,24 @@ export class ChatPanel {
     this.bindEvents();
     this.bindConfigTabs();
     this.bindIpc();
+
+    // 填充模型服务商下拉；切换时自动带出默认接口地址与模型名
+    for (const preset of LLM_PROVIDERS) {
+      const opt = document.createElement("option");
+      opt.value = preset.id;
+      opt.textContent = preset.label;
+      this.providerInput.appendChild(opt);
+    }
+    this.providerInput.addEventListener("change", () => {
+      const preset = LLM_PROVIDERS.find((p) => p.id === this.providerInput.value) ?? LLM_PROVIDERS[0];
+      this.baseUrlInput.value = preset.baseUrl;
+      this.modelInput.value = preset.model;
+    });
     // 启动时读取语音配置（决定喇叭按钮是否可用）
     window.electronAPI.tts.getConfig().then((cfg) => {
       this.ttsEnabled = Boolean(cfg.enabled);
     }).catch(() => { /* 未配置时保持关闭 */ });
-    this.showHint("首次使用：点击右上角 ⚙ 设置，填入 DeepSeek API Key，然后就可以和芙宁娜聊天了～");
+    this.showHint("首次使用：点击右上角 ⚙ 设置，填入模型 API Key，然后就可以和芙宁娜聊天了～");
   }
 
   /** 设置面板标签页切换（事件委托，绑定更可靠） */
@@ -165,6 +197,8 @@ export class ChatPanel {
     this.kbBrowseBtn.addEventListener("click", () => void this.browseKnowledge());
     this.trustClearBtn.addEventListener("click", () => void this.clearTrustedTools());
     this.musicBtn?.addEventListener("click", () => void window.electronAPI.music.openMini());
+    this.phoneTestBtn.addEventListener("click", () => void this.testPhonePush());
+    this.phoneChannelInput.addEventListener("change", () => this.syncPhoneChannelUi());
     this.bindMicButton();
 
     this.sendBtn.addEventListener("click", () => void this.send());
@@ -407,6 +441,16 @@ export class ChatPanel {
 
   toggle(): void {
     this.setVisible(!this.visible);
+  }
+
+  /** 供桌宠右键菜单等外部入口打开设置面板 */
+  openSettings(): Promise<void> {
+    return this.openConfig();
+  }
+
+  /** 系统提醒触发时在聊天窗显示提示 */
+  showReminder(text: string): void {
+    this.showHint(`⏰ 提醒：${text}`);
   }
 
   setVisible(open: boolean): void {
@@ -667,9 +711,11 @@ export class ChatPanel {
 
   private async openConfig(): Promise<void> {
     const cfg = await window.electronAPI.chat.getConfig();
+    const preset = LLM_PROVIDERS.find((p) => p.id === cfg.provider) ?? LLM_PROVIDERS[0];
+    this.providerInput.value = preset.id;
     this.apiKeyInput.value = cfg.apiKey ?? "";
-    this.baseUrlInput.value = cfg.baseUrl ?? "https://api.deepseek.com";
-    this.modelInput.value = cfg.model ?? "deepseek-chat";
+    this.baseUrlInput.value = cfg.baseUrl ?? preset.baseUrl;
+    this.modelInput.value = cfg.model ?? preset.model;
     const tts = await window.electronAPI.tts.getConfig();
     this.ttsEnabledInput.checked = Boolean(tts.enabled);
     this.ttsApiKeyInput.value = tts.apiKey ?? "";
@@ -679,6 +725,15 @@ export class ChatPanel {
     this.asrApiKeyInput.value = asr.apiKey ?? "";
     this.asrModelInput.value = asr.model ?? "qwen-audio-3.0-asr-flash-streaming";
     this.asrHotWordsInput.value = asr.hotWords ?? "";
+    const phone = await window.electronAPI.phonePush.getConfig();
+    this.phoneEnabledInput.checked = Boolean(phone.enabled);
+    this.phoneChannelInput.value = phone.channel === "bark" ? "bark" : "ntfy";
+    this.phoneTopicInput.value = phone.ntfyTopic ?? "";
+    this.phoneServerInput.value = phone.ntfyServer ?? "https://ntfy.sh";
+    this.phoneBarkInput.value = phone.barkUrl ?? "";
+    this.phoneSoundInput.value = phone.sound ?? "";
+    this.phoneStatusEl.textContent = "";
+    this.syncPhoneChannelUi();
     this.configView.classList.remove("hidden");
     this.configView.scrollTop = 0;
     void this.refreshMemory();
@@ -841,10 +896,12 @@ export class ChatPanel {
   }
 
   private async saveConfig(): Promise<void> {
+    const preset = LLM_PROVIDERS.find((p) => p.id === this.providerInput.value) ?? LLM_PROVIDERS[0];
     await window.electronAPI.chat.setConfig({
+      provider: preset.id,
       apiKey: this.apiKeyInput.value.trim(),
-      baseUrl: this.baseUrlInput.value.trim() || "https://api.deepseek.com",
-      model: this.modelInput.value.trim() || "deepseek-chat",
+      baseUrl: this.baseUrlInput.value.trim() || preset.baseUrl || "https://api.deepseek.com",
+      model: this.modelInput.value.trim() || preset.model || "deepseek-chat",
     });
     this.ttsEnabled = this.ttsEnabledInput.checked;
     await window.electronAPI.tts.setConfig({
@@ -858,12 +915,42 @@ export class ChatPanel {
       model: this.asrModelInput.value === "paraformer-realtime-v2" ? "paraformer-realtime-v2" : "qwen-audio-3.0-asr-flash-streaming",
       hotWords: this.asrHotWordsInput.value.trim(),
     });
+    await window.electronAPI.phonePush.setConfig({
+      enabled: this.phoneEnabledInput.checked,
+      channel: this.phoneChannelInput.value === "bark" ? "bark" : "ntfy",
+      ntfyTopic: this.phoneTopicInput.value.trim(),
+      ntfyServer: this.phoneServerInput.value.trim() || "https://ntfy.sh",
+      barkUrl: this.phoneBarkInput.value.trim(),
+      sound: this.phoneSoundInput.value.trim(),
+    });
     this.closeConfig();
     this.showHint(
       this.ttsEnabled
         ? "设置已保存 ✓ 点消息上的 🔊 按钮即可让芙宁娜开口朗读"
         : "设置已保存 ✓ 现在可以和芙宁娜聊天了。",
     );
+  }
+
+  /** 根据推送通道切换显示 ntfy / Bark 配置组 */
+  private syncPhoneChannelUi(): void {
+    const isBark = this.phoneChannelInput.value === "bark";
+    this.configView.querySelectorAll<HTMLElement>("[data-phone-group]").forEach((g) => {
+      g.classList.toggle("hidden", g.dataset.phoneGroup === "ntfy" ? isBark : !isBark);
+    });
+  }
+
+  /** 发送一条测试手机推送，验证配置 */
+  private async testPhonePush(): Promise<void> {
+    this.phoneTestBtn.disabled = true;
+    this.phoneStatusEl.textContent = "发送中…";
+    try {
+      const res = await window.electronAPI.phonePush.test();
+      this.phoneStatusEl.textContent = res.ok ? "已发送 ✓ 手机收到即配置成功" : "失败：" + (res.reason ?? "未知错误");
+    } catch (err) {
+      this.phoneStatusEl.textContent = "失败：" + (err instanceof Error ? err.message : String(err));
+    } finally {
+      this.phoneTestBtn.disabled = false;
+    }
   }
 
   destroy(): void {

@@ -51,9 +51,14 @@
       <button class="config-tab" data-config-tab="memory">记忆</button>
       <button class="config-tab" data-config-tab="kb">知识库</button>
       <button class="config-tab" data-config-tab="tools">操作确认</button>
+      <button class="config-tab" data-config-tab="phone">手机</button>
     </div>
     <div class="config-tab-page" data-config-page="chat">
-      <div class="config-title">DeepSeek 设置</div>
+      <div class="config-title">对话模型设置</div>
+      <div class="config-field">
+        <label>模型服务商</label>
+        <select id="config-provider"></select>
+      </div>
       <div class="config-field">
         <label>API Key</label>
         <input id="config-apikey" type="password" placeholder="sk-..." autocomplete="off" />
@@ -67,8 +72,8 @@
         <input id="config-model" type="text" placeholder="deepseek-chat" />
       </div>
       <div class="config-tip">
-        在 platform.deepseek.com 注册并创建 API Key。
-        Key 仅保存在本机配置文件中，不会上传。也可以不填写，改用环境变量 DEEPSEEK_API_KEY。
+        在对应服务商平台创建 API Key（DeepSeek / 通义千问 / Kimi / 智谱 / OpenRouter）。
+        Key 仅保存在本机配置文件中，不会上传。也可以不填写，改用对应服务商的环境变量。
       </div>
     </div>
     <div class="config-tab-page hidden" data-config-page="voice">
@@ -145,6 +150,45 @@
       </div>
       <button id="chat-trust-clear" class="memory-clear-btn">清除信任，恢复每次询问</button>
     </div>
+    <div class="config-tab-page hidden" data-config-page="phone">
+      <div class="config-title">手机提醒</div>
+      <div class="config-tip">提醒到点时，手机也会同步收到通知和铃声（电脑本地闹钟不受影响）。安卓推荐 ntfy：支持自定义铃声、通知一直响到手动关闭。</div>
+      <div class="config-field config-checkbox">
+        <label><input type="checkbox" id="config-phone-enabled" /> 启用手机提醒</label>
+      </div>
+      <div class="config-field">
+        <label>推送通道</label>
+        <select id="config-phone-channel">
+          <option value="ntfy">ntfy（推荐，安卓）</option>
+          <option value="bark">Bark（苹果）</option>
+        </select>
+      </div>
+      <div class="config-phone-group" data-phone-group="ntfy">
+        <div class="config-field">
+          <label>ntfy 主题名</label>
+          <input id="config-phone-topic" type="text" placeholder="如 furina-reminder" autocomplete="off" />
+        </div>
+        <div class="config-field">
+          <label>ntfy 服务器（自建才需要改）</label>
+          <input id="config-phone-server" type="text" placeholder="https://ntfy.sh" autocomplete="off" />
+        </div>
+      </div>
+      <div class="config-phone-group" data-phone-group="bark">
+        <div class="config-field">
+          <label>Bark 推送地址</label>
+          <input id="config-phone-bark" type="text" placeholder="https://api.day.app/你的Key/" autocomplete="off" />
+        </div>
+        <div class="config-field">
+          <label>铃声名（手机 Bark 目录中的文件名，不含扩展名）</label>
+          <input id="config-phone-sound" type="text" placeholder="如 furina，留空用默认提示音" autocomplete="off" />
+        </div>
+      </div>
+      <div class="kb-path-row">
+        <span id="config-phone-status" class="phone-status"></span>
+        <button id="config-phone-test" class="kb-btn">发送测试</button>
+      </div>
+      <div class="config-tip">ntfy 用法：手机装 ntfy App（Google Play / F-Droid / GitHub）→ 订阅你填的主题名 → 提醒到点手机响通知。想用芙宁娜铃声：把 furina.mp3 加入手机系统通知音，再在 ntfy 该主题的通知设置里选中它。</div>
+    </div>
 
     <div class="config-buttons">
       <button id="chat-config-back">返回</button>
@@ -188,9 +232,14 @@
             <button class="config-tab" data-config-tab="memory">记忆</button>
             <button class="config-tab" data-config-tab="kb">知识库</button>
             <button class="config-tab" data-config-tab="tools">操作确认</button>
+            <button class="config-tab" data-config-tab="phone">手机</button>
           </div>
           <div class="config-tab-page" data-config-page="chat">
-            <div class="config-title">DeepSeek 设置</div>
+            <div class="config-title">对话模型设置</div>
+            <div class="config-field">
+              <label>模型服务商</label>
+              <select id="full-config-provider"></select>
+            </div>
             <div class="config-field">
               <label>API Key</label>
               <input id="full-config-apikey" type="password" placeholder="sk-..." autocomplete="off" />
@@ -204,7 +253,7 @@
               <input id="full-config-model" type="text" placeholder="deepseek-chat" />
             </div>
             <div class="config-tip">
-              在 platform.deepseek.com 注册并创建 API Key。也可以不填写，改用环境变量 DEEPSEEK_API_KEY。
+              在对应服务商平台创建 API Key。也可以不填写，改用对应服务商的环境变量。
             </div>
           </div>
           <div class="config-tab-page hidden" data-config-page="voice">
@@ -280,6 +329,45 @@
       </div>
       <button id="full-chat-trust-clear" class="memory-clear-btn">清除信任，恢复每次询问</button>
     </div>
+          <div class="config-tab-page hidden" data-config-page="phone">
+            <div class="config-title">手机提醒</div>
+            <div class="config-tip">提醒到点时，手机也会同步收到通知和铃声（电脑本地闹钟不受影响）。安卓推荐 ntfy：支持自定义铃声、通知一直响到手动关闭。</div>
+            <div class="config-field config-checkbox">
+              <label><input type="checkbox" id="full-config-phone-enabled" /> 启用手机提醒</label>
+            </div>
+            <div class="config-field">
+              <label>推送通道</label>
+              <select id="full-config-phone-channel">
+                <option value="ntfy">ntfy（推荐，安卓）</option>
+                <option value="bark">Bark（苹果）</option>
+              </select>
+            </div>
+            <div class="config-phone-group" data-phone-group="ntfy">
+              <div class="config-field">
+                <label>ntfy 主题名</label>
+                <input id="full-config-phone-topic" type="text" placeholder="如 furina-reminder" autocomplete="off" />
+              </div>
+              <div class="config-field">
+                <label>ntfy 服务器（自建才需要改）</label>
+                <input id="full-config-phone-server" type="text" placeholder="https://ntfy.sh" autocomplete="off" />
+              </div>
+            </div>
+            <div class="config-phone-group" data-phone-group="bark">
+              <div class="config-field">
+                <label>Bark 推送地址</label>
+                <input id="full-config-phone-bark" type="text" placeholder="https://api.day.app/你的Key/" autocomplete="off" />
+              </div>
+              <div class="config-field">
+                <label>铃声名（手机 Bark 目录中的文件名，不含扩展名）</label>
+                <input id="full-config-phone-sound" type="text" placeholder="如 furina，留空用默认提示音" autocomplete="off" />
+              </div>
+            </div>
+            <div class="kb-path-row">
+              <span id="full-config-phone-status" class="phone-status"></span>
+              <button id="full-config-phone-test" class="kb-btn">发送测试</button>
+            </div>
+            <div class="config-tip">ntfy 用法：手机装 ntfy App（Google Play / F-Droid / GitHub）→ 订阅你填的主题名 → 提醒到点手机响通知。想用芙宁娜铃声：把 furina.mp3 加入手机系统通知音，再在 ntfy 该主题的通知设置里选中它。</div>
+          </div>
 
     <div class="config-buttons">
             <button id="full-chat-config-back">返回</button>

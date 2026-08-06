@@ -1,6 +1,6 @@
 export {};
 
-import type { AsrConfig, ChatConfig, KnowledgeStatus, MemoryInfo } from "../shared/chat-types";
+import type { AsrConfig, ChatConfig, KnowledgeStatus, MemoryInfo, PhonePushConfig } from "../shared/chat-types";
 
 declare global {
   interface Window {
@@ -41,9 +41,29 @@ declare global {
         get: () => Promise<MemoryInfo>;
         clear: () => Promise<MemoryInfo>;
       };
+      tasks: {
+        onReminder: (cb: (payload: { text: string; dueAt: number }) => void) => () => void;
+      };
+      petmenu: {
+        open: (x: number, y: number) => Promise<boolean>;
+        close: () => void;
+        command: (payload: string) => void;
+        onCommand: (cb: (payload: string) => void) => () => void;
+      };
       music: {
         openMini: () => Promise<boolean>;
         closeMini: () => Promise<boolean>;
+      };
+      alarm: {
+        open: (text: string, dueAt: number) => Promise<boolean>;
+        close: () => Promise<boolean>;
+        snooze: (text: string) => Promise<boolean>;
+        getBgm: () => Promise<{ base64: string; format: string } | null>;
+      };
+      phonePush: {
+        getConfig: () => Promise<PhonePushConfig>;
+        setConfig: (patch: PhonePushConfig) => Promise<PhonePushConfig>;
+        test: () => Promise<{ ok: boolean; reason?: string }>;
       };
       danger: {
         onConfirm: (cb: (payload: { id: string; toolName: string; detail: string }) => void) => () => void;

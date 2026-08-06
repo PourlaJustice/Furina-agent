@@ -7,11 +7,24 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { ChatConfig, ChatMessage } from "../shared/chat-types";
+import { LLM_PROVIDERS, type ChatConfig, type ChatMessage, type LLMProviderPreset } from "../shared/chat-types";
 
 const DEFAULT_BASE_URL = "https://api.deepseek.com";
 const DEFAULT_MODEL = "deepseek-chat";
 const MAX_HISTORY = 30; // 最多保留最近 30 条历史，防止上下文超长
+
+// ---- 多服务商（OpenAI 兼容）支持 ----
+
+/** 按 provider ID 查找预设，未知时回退 DeepSeek */
+export function getProviderPreset(provider?: string): LLMProviderPreset {
+  return LLM_PROVIDERS.find((p) => p.id === provider) ?? LLM_PROVIDERS[0];
+}
+
+/** 服务商显示名（用于错误提示） */
+export function providerLabel(provider?: string): string {
+  const preset = getProviderPreset(provider);
+  return preset.id === "custom" ? "自定义模型" : preset.label.split("（")[0];
+}
 
 // ---- 配置读写（userData/chat-config.json） ----
 
@@ -44,10 +57,18 @@ export function saveChatConfig(patch: ChatConfig): ChatConfig {
 /** 归一化配置：填入默认值，apiKey 优先取环境变量 */
 export function resolveChatConfig(): Required<ChatConfig> {
   const cfg = loadChatConfig();
+  const preset = getProviderPreset(cfg.provider);
+  // Key 优先级：配置 > 当前服务商环境变量 > DEEPSEEK_API_KEY（兼容旧配置）
+  const apiKey =
+    cfg.apiKey ||
+    (preset.envVar ? process.env[preset.envVar] || "" : "") ||
+    process.env.DEEPSEEK_API_KEY ||
+    "";
   return {
-    apiKey: cfg.apiKey || process.env.DEEPSEEK_API_KEY || "",
-    baseUrl: (cfg.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, ""),
-    model: cfg.model || DEFAULT_MODEL,
+    provider: cfg.provider || "deepseek",
+    apiKey,
+    baseUrl: (cfg.baseUrl || preset.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, ""),
+    model: cfg.model || preset.model || DEFAULT_MODEL,
     useLangGraph: cfg.useLangGraph ?? true,
   };
 }
@@ -68,7 +89,7 @@ export async function streamDeepSeek(
 ): Promise<string> {
   const cfg = resolveChatConfig();
   if (!cfg.apiKey) {
-    throw new Error("未配置 DeepSeek API Key。请在聊天面板的 ⚙ 设置中填入，或设置环境变量 DEEPSEEK_API_KEY。");
+    throw new Error(`未配置 ${providerLabel(cfg.provider)} API Key。请在聊天面板的 ⚙ 设置中填入，或设置对应的环境变量。`);
   }
 
   const url = `${cfg.baseUrl}/chat/completions`;
@@ -101,12 +122,12 @@ export async function streamDeepSeek(
         : response.status === 429
           ? "（请求过于频繁，请稍后再试）"
           : response.status === 402
-            ? "（账户余额不足，请到 DeepSeek 平台充值）"
+            ? "（账户余额不足，请检查对应平台额度）"
             : "";
-    throw new Error(`DeepSeek 请求失败 (HTTP ${response.status}) ${hint}\n${detail}`);
+    throw new Error(`${providerLabel(cfg.provider)} 请求失败 (HTTP ${response.status}) ${hint}\n${detail}`);
   }
 
-  if (!response.body) throw new Error("DeepSeek 返回了空响应体");
+  if (!response.body) throw new Error(`${providerLabel(cfg.provider)} 返回了空响应体`);
 
   // SSE 逐行解析：每行形如 `data: {...}`，流结束为 `data: [DONE]`
   const decoder = new TextDecoder("utf-8");
@@ -153,7 +174,7 @@ export async function completeDeepSeek(
 ): Promise<{ content: string; toolCalls: Array<{ id: string; name: string; arguments: string }> }> {
   const cfg = resolveChatConfig();
   if (!cfg.apiKey) {
-    throw new Error('未配置 DeepSeek API Key。请在聊天面板的 ⚙ 设置中填入，或设置环境变量 DEEPSEEK_API_KEY。');
+    throw new Error(`未配置 ${providerLabel(cfg.provider)} API Key。请在聊天面板的 ⚙ 设置中填入，或设置对应的环境变量。`);
   }
   const url = `${cfg.baseUrl}/chat/completions`;
   const response = await fetch(url, {
@@ -175,7 +196,7 @@ export async function completeDeepSeek(
     } catch {
       detail = await response.text().catch(() => '');
     }
-    throw new Error(`DeepSeek 请求失败 (HTTP ${response.status})\n${detail}`);
+    throw new Error(`${providerLabel(cfg.provider)} 请求失败 (HTTP ${response.status})\n${detail}`);
   }
   const data = (await response.json()) as {
     choices?: Array<{ message?: { content?: string | null; tool_calls?: Array<{ id: string; function?: { name?: string; arguments?: string } }> } }>;

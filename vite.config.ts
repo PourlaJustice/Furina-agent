@@ -33,6 +33,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, "src/renderer/index.html"),
+        "pet-menu": resolve(__dirname, "src/renderer/pet-menu.html"),
+        alarm: resolve(__dirname, "src/renderer/alarm.html"),
       },
     },
   },

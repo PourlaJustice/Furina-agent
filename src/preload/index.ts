@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
-import type { AsrConfig, ChatConfig, KnowledgeStatus, MemoryInfo, TtsConfig, TtsSpeakResult } from '../shared/chat-types';
+import type { AsrConfig, ChatConfig, KnowledgeStatus, MemoryInfo, PhonePushConfig, TtsConfig, TtsSpeakResult } from '../shared/chat-types';
 
 // 通过 contextBridge 安全暴露 API 给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -89,10 +89,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
     respond: (id: string, choice: 'once' | 'always' | 'deny') =>
       ipcRenderer.invoke('danger:confirm:respond', { id, choice }),
   },
+  // 待办 / 提醒（提醒触发时聊天窗显示）
+  tasks: {
+    onReminder: (cb: (payload: { text: string; dueAt: number }) => void) => subscribe(IPC_CHANNELS.TASKS_REMINDER_EVENT, cb),
+  },
+  // 桌宠右键互动菜单（独立悬浮窗）
+  petmenu: {
+    open: (x: number, y: number) => ipcRenderer.invoke(IPC_CHANNELS.PET_MENU_OPEN, { x, y }),
+    close: () => ipcRenderer.send(IPC_CHANNELS.PET_MENU_CLOSE),
+    command: (payload: string) => ipcRenderer.send(IPC_CHANNELS.PET_MENU_COMMAND, payload),
+    onCommand: (cb: (payload: string) => void) => subscribe(IPC_CHANNELS.PET_MENU_EVENT, cb),
+  },
   // 迷你点歌台
   music: {
     openMini: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_MINI_OPEN),
     closeMini: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_MINI_CLOSE),
+  },
+  // 闹钟提醒弹窗
+  alarm: {
+    open: (text: string, dueAt: number) => ipcRenderer.invoke(IPC_CHANNELS.ALARM_OPEN, text, dueAt),
+    close: () => ipcRenderer.invoke(IPC_CHANNELS.ALARM_CLOSE),
+    snooze: (text: string) => ipcRenderer.invoke(IPC_CHANNELS.ALARM_SNOOZE, text),
+    getBgm: () => ipcRenderer.invoke(IPC_CHANNELS.ALARM_GET_BGM) as Promise<{ base64: string; format: string } | null>,
+  },
+  // 手机提醒推送（Bark）
+  phonePush: {
+    getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.PHONE_PUSH_CONFIG_GET) as Promise<PhonePushConfig>,
+    setConfig: (patch: PhonePushConfig) => ipcRenderer.invoke(IPC_CHANNELS.PHONE_PUSH_CONFIG_SET, patch) as Promise<PhonePushConfig>,
+    test: () => ipcRenderer.invoke(IPC_CHANNELS.PHONE_PUSH_TEST) as Promise<{ ok: boolean; reason?: string }>,
   },
   fullwin: {
     min: () => ipcRenderer.invoke(IPC_CHANNELS.FULL_WIN_MIN),

@@ -128,12 +128,21 @@ function homeDesktop(): string {
   return path.join(app.getPath('home'), 'Desktop');
 }
 
+/** 给耗时操作加超时（文件解析等），超时抛错 */
+function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(msg)), ms)),
+  ]);
+}
+
 /** Bing 网页搜索（国内可用，失败时返回提示） */
 async function bingSearch(query: string, max = 5): Promise<string> {
   try {
     const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=zh-hans&mkt=zh-CN`;
     const resp = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36' },
+      signal: AbortSignal.timeout(15_000), // 搜索不挂死：15 秒超时
     });
     const html = await resp.text();
     const blocks = html.match(/<li class="b_algo"[\s\S]*?<\/li>/g) ?? [];
@@ -162,7 +171,7 @@ export const AGENT_TOOLS: ToolDef[] = [
   },
   {
     name: 'calc',
-    description: '计算数学表达式，如 23*45+12、sqrt(16)、(3+4)*5。表达式必须是安全的数字运算',
+    description: '计算数学表达式，如 23*45+12、sqrt(16)、(3+4)*5、2^10、pow(2,10)。支持四则运算、括号、幂（^）、取模（%）与常用数学函数（sqrt/abs/pow/floor/ceil/round/min/max/log/exp/sin/cos/tan）',
     parameters: {
       type: 'object',
       properties: {
@@ -172,12 +181,24 @@ export const AGENT_TOOLS: ToolDef[] = [
     },
     execute: (args) => {
       const expr = String(args.expression ?? '').trim();
-      // 安全校验：只允许数字、四则运算、括号、小数点、幂与取模
-      if (!/^[0-9+\-*/().\s^%]+$/.test(expr) || expr.length > 100) {
-        return '表达式不合法';
+      if (!expr || expr.length > 100) return '表达式不合法';
+      // 安全计算器：只允许数字/运算符/括号 + 白名单数学函数（不允许任意字母，防注入）
+      const SAFE_FUNCS: Record<string, string> = {
+        sqrt: 'Math.sqrt', abs: 'Math.abs', pow: 'Math.pow', floor: 'Math.floor',
+        ceil: 'Math.ceil', round: 'Math.round', min: 'Math.min', max: 'Math.max',
+        log: 'Math.log', exp: 'Math.exp', sin: 'Math.sin', cos: 'Math.cos',
+        tan: 'Math.tan', PI: 'Math.PI', E: 'Math.E',
+      };
+      const tokens = expr.match(/[A-Za-z_][A-Za-z0-9_]*|[0-9]+(?:\.[0-9]+)?|[\s+\-*/(),.%^]+/g) ?? [];
+      if (tokens.join('') !== expr) return '表达式不合法';
+      for (const t of tokens) {
+        if (/^[A-Za-z_]/.test(t) && !(t in SAFE_FUNCS)) return '表达式不合法';
       }
+      let mapped = expr.replace(/[A-Za-z_][A-Za-z0-9_]*/g, (w) => SAFE_FUNCS[w] ?? '');
+      // 幂：把 a^b 转成 Math.pow(a, b)（JS 原生 ^ 是位异或，不符合“幂”语义）
+      mapped = mapped.replace(/(\d+(?:\.\d+)?)\s*\^\s*(\d+(?:\.\d+)?)/g, 'Math.pow($1,$2)');
       try {
-        const result = Function(`"use strict"; return (${expr});`)();
+        const result = Function(`"use strict"; return (${mapped});`)();
         return `${expr} = ${result}`;
       } catch {
         return '表达式计算失败';
@@ -223,7 +244,11 @@ export const AGENT_TOOLS: ToolDef[] = [
       const file = String(args.path ?? '');
       if (!file || !fs.existsSync(file)) return `文件不存在：${file}`;
       if (fs.statSync(file).isDirectory()) return `这是文件夹，请用 list_dir 查看：${file}`;
-      const text = await parseFileText(file);
+      const size = fs.statSync(file).size;
+      if (size > 50 * 1024 * 1024) {
+        return `文件过大（${(size / 1024 / 1024).toFixed(1)}MB），已拒绝读取（上限 50MB）`;
+      }
+      const text = await withTimeout(parseFileText(file), 30_000, '文件解析超时（30 秒），可能文件过大或损坏');
       if (!text || text.trim().length === 0) return '未能从该文件提取到文字（可能是扫描版/空文件）';
       const max = Math.max(500, Number(args.max_chars) || 3000);
       return text.slice(0, max) + (text.length > max ? '\n…（已截断）' : '');
@@ -386,7 +411,7 @@ export const AGENT_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_weather',
-    description: '查询指定城市的天气（今天和明天），返回天气现象、温度、降水概率、风速等。如果此工具失败，请改用 web_search 搜索天气',
+    description: '查询指定城市的天气（今天/明天，Open-Meteo 离线兜底）。需要 15 天预报、空气质量、生活指数、天气预警等详细数据时，改用和风天气工具（qweather__get-weather-forecast / qweather__get-air-quality / qweather__get-weather-indices / qweather__get-weather-warning 等）',
     parameters: {
       type: 'object',
       properties: {
@@ -431,6 +456,10 @@ const TOOL_KEYWORDS = [
   '邮件', '浏览', '帮我弄', '帮我做', '帮忙', '计算', '算一下', '帮我算',
   '提醒', '待办', '日程', '备忘', '闹钟', '记一下', '事项', '别忘了',
   '气温', '预报', '下雨', '刮风', '台风',
+  '空气质量', '污染', 'AQI', '穿衣', '紫外线', '湿度', '体感',
+  '数据库', '聊天记录', '统计',
+  '识别', '图片', '看图', 'OCR',
+  '定位', '位置', '我在哪',
   '截图', '屏幕', '截屏', '看看画面',
   '播放', '听歌', '放歌', '点歌', '音乐', '歌曲', '歌单', '歌词', '切歌', '暂停', '继续播放', '停止播放', '音量', '播放器', '放一首', '来一首', '听一首',
 ];

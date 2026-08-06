@@ -47,7 +47,23 @@ export const IPC_CHANNELS = {
   // ---- 危险操作信任 ----
   TOOLS_LIST_TRUSTED: 'tools:trust:list',
   TOOLS_CLEAR_TRUSTED: 'tools:trust:clear',
+  // ---- 待办 / 提醒 ----
+  TASKS_REMINDER_EVENT: 'tasks:reminder', // 主进程 → 渲染进程：提醒触发（聊天窗显示）
+  // ---- 桌宠右键互动菜单（独立悬浮窗） ----
+  PET_MENU_OPEN: 'petmenu:open',      // 桌宠窗口 → 主进程：在屏幕坐标打开菜单
+  PET_MENU_CLOSE: 'petmenu:close',    // 菜单窗口 → 主进程：关闭
+  PET_MENU_COMMAND: 'petmenu:command',// 菜单窗口 → 主进程：执行命令（expr:/motion:/chat/settings/music/quit）
+  PET_MENU_EVENT: 'petmenu:event',    // 主进程 → 桌宠窗口：转发命令事件
   // ---- 迷你点歌台 ----
   MUSIC_MINI_OPEN: 'music:mini:open',
   MUSIC_MINI_CLOSE: 'music:mini:close',
+  // ---- 闹钟提醒弹窗 ----
+  ALARM_OPEN: 'alarm:open',       // 渲染进程 → 主进程：打开闹钟窗
+  ALARM_CLOSE: 'alarm:close',     // 闹钟窗 → 主进程：关闭
+  ALARM_SNOOZE: 'alarm:snooze',   // 闹钟窗 → 主进程：贪睡 5 分钟
+  ALARM_GET_BGM: 'alarm:get-bgm', // 闹钟窗 → 主进程：读取提醒 BGM 素材
+  // ---- 手机提醒推送（Bark） ----
+  PHONE_PUSH_CONFIG_GET: 'phone-push:config:get',
+  PHONE_PUSH_CONFIG_SET: 'phone-push:config:set',
+  PHONE_PUSH_TEST: 'phone-push:test',
 } as const;

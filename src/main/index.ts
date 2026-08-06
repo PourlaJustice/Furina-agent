@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, screen, session, shell } from 'electron';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import type { ChatMessage } from '../shared/chat-types';
@@ -10,7 +11,8 @@ import { buildMemoryContext, clearMemory, getMemoryInfo, rememberFromTurn } from
 import { isToolIntent, runAgent } from './agent';
 import { runLangGraph } from './ai/graph';
 import { initLangChainEmbeddings } from './ai/retriever';
-import { initTasks } from './tasks';
+import { addReminder, initTasks, onReminderFired } from './tasks';
+import { resolvePhonePushConfig, savePhonePushConfig, sendPhonePush, testPhonePush } from './phone-push';
 import { initMcp, mcpManager } from './ai/mcp';
 import { clearTrustedTools, listTrustedTools } from './trust-store';
 import { screenshotHelper } from './screenshot';
@@ -18,10 +20,16 @@ import { clearKnowledge, getKnowledgeStatus, importKnowledgePath, initKnowledgeB
 import type { RagResult } from './rag';
 
 // Windows 透明窗口开关
+// ★ Windows 系统通知（toast）必需：不设置 AppUserModelId 时通知会静默失败
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.furina.agent');
+}
 app.commandLine.appendSwitch('enable-transparent-visuals');
 app.commandLine.appendSwitch('disable-gpu-sandbox');
 // 禁用叠加式滚动条，让 ::-webkit-scrollbar 自定义样式生效
 app.commandLine.appendSwitch('disable-features', 'OverlayScrollbar');
+// ★ 允许无用户手势自动播放音频（闹钟 BGM / 自动语音必须，否则 Windows 会静默拦截）
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 // ---- 外部链接处理：聊天里的链接一律在系统浏览器打开，避免窗口被带走 ----
 function isAppUrl(url: string): boolean {
@@ -316,6 +324,32 @@ function loadWorldKnowledge(): string {
   return worldKnowledgeCache;
 }
 
+/**
+ * ★ 聊天记录自动落库（异步，不阻塞聊天）。
+ * 用子进程 + Node 内置 SQLite，避免 Electron 主进程加载 better-sqlite3 的 ABI 冲突。
+ */
+function logChatToDb(userText: string, assistantText: string): void {
+  try {
+    if (!assistantText.trim()) return;
+    const dbPath = path.join(app.getAppPath(), 'data', 'furina.db');
+    const script = path.join(app.getAppPath(), 'scripts', 'chat-logger.cjs');
+    if (!fs.existsSync(script)) return;
+    const payload = JSON.stringify({
+      dbPath,
+      messages: [
+        { role: 'user', content: userText },
+        { role: 'assistant', content: assistantText },
+      ],
+    });
+    const child = spawn('node', [script], { stdio: ['pipe', 'ignore', 'ignore'] });
+    child.stdin.write(payload);
+    child.stdin.end();
+    child.on('error', () => { /* 落库失败不影响聊天 */ });
+  } catch {
+    // 忽略
+  }
+}
+
 /** 组装最终系统提示词：人设 + 世界见闻 + 记忆 + 知识库检索 */
 function systemPrompt(rag?: RagResult | null): string {
   const parts = [FURINA_SYSTEM_PROMPT];
@@ -419,6 +453,8 @@ function registerChatIpc(): void {
       }
       history.push({ role: 'assistant', content: full });
       event.sender.send(IPC_CHANNELS.CHAT_EVENT_DONE, { text: full });
+      // ★ 对话记录自动写入 SQLite（data/furina.db），不阻塞聊天
+      logChatToDb(content, full);
       // ★ 对话结束后后台提取记忆（不阻塞聊天）
       void rememberFromTurn(content, full).catch((err) => console.error('[Memory] 提取失败:', err));
     } catch (err) {
@@ -625,9 +661,195 @@ function registerMusicMiniIpc(): void {
     return true;
   });
 }
+
+// ---- 桌宠右键互动菜单（独立悬浮窗：可在桌面任意位置打开/拖动，失焦自动收起） ----
+let petMenuWindow: BrowserWindow | null = null;
+
+function openPetMenuWindow(x: number, y: number): void {
+  if (petMenuWindow && !petMenuWindow.isDestroyed()) {
+    petMenuWindow.setPosition(x, y);
+    petMenuWindow.show();
+    petMenuWindow.focus();
+    return;
+  }
+  const width = 252;
+  const height = 410; // 16 个表情 + 4 个动作 + 功能入口
+  const area = screen.getDisplayNearestPoint({ x, y }).workArea;
+  const win = new BrowserWindow({
+    width,
+    height,
+    x: Math.max(area.x, Math.min(x, area.x + area.width - width)),
+    y: Math.max(area.y, Math.min(y, area.y + area.height - height)),
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    webPreferences: {
+      // ★ 与桌宠窗口一致：编译产物在 dist/preload/preload/index.js
+      preload: path.join(ROOT, 'preload/preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+  petMenuWindow = win;
+  win.setAlwaysOnTop(true, 'screen-saver'); // 保持在桌宠之上
+  if (process.env.VITE_DEV) {
+    win.loadURL('http://localhost:5173/pet-menu.html');
+  } else {
+    win.loadFile(path.join(ROOT, 'renderer/pet-menu.html'));
+  }
+  // 失焦即关闭：点击菜单外任意位置自动收起
+  win.on('blur', () => {
+    if (petMenuWindow === win) win.close();
+  });
+  win.on('closed', () => {
+    if (petMenuWindow === win) petMenuWindow = null;
+  });
+}
+
+function registerPetMenuIpc(): void {
+  ipcMain.handle(IPC_CHANNELS.PET_MENU_OPEN, (_event, payload: { x?: unknown; y?: unknown }) => {
+    const x = typeof payload?.x === 'number' ? Math.round(payload.x) : 0;
+    const y = typeof payload?.y === 'number' ? Math.round(payload.y) : 0;
+    openPetMenuWindow(x, y);
+    return true;
+  });
+  ipcMain.on(IPC_CHANNELS.PET_MENU_CLOSE, () => {
+    petMenuWindow?.close();
+  });
+  ipcMain.on(IPC_CHANNELS.PET_MENU_COMMAND, (_event, payload: unknown) => {
+    const cmd = typeof payload === 'string' ? payload : '';
+    // 退出直接在主进程处理
+    if (cmd === 'quit') {
+      app.quit();
+      return;
+    }
+    // 其余命令（expr:/motion:/chat/settings/music）转发给桌宠窗口渲染进程执行
+    mainWindow?.webContents.send(IPC_CHANNELS.PET_MENU_EVENT, cmd);
+  });
+  // 兼容旧入口：window:quit
+  ipcMain.on('window:quit', () => app.quit());
+}
+
+registerPetMenuIpc();
 registerMusicMiniIpc();
 registerMemoryIpc();
 registerKnowledgeIpc();
+
+// ---- 闹钟提醒弹窗（闹钟样式：BGM + 自动语音 + 桌面弹窗） ----
+let alarmWindow: BrowserWindow | null = null;
+
+function openAlarmWindow(text: string, dueAt: number): void {
+  const safeText = (typeof text === 'string' ? text : '时间到啦！').slice(0, 200);
+  const due = typeof dueAt === 'number' && Number.isFinite(dueAt) ? dueAt : Date.now();
+  if (alarmWindow && !alarmWindow.isDestroyed()) {
+    // 已存在：直接刷新内容并置顶
+    if (process.env.VITE_DEV) {
+      void alarmWindow.loadURL(`http://localhost:5173/alarm.html?text=${encodeURIComponent(safeText)}&dueAt=${due}`);
+    } else {
+      void alarmWindow.loadFile(path.join(ROOT, 'renderer/alarm.html'), { query: { text: safeText, dueAt: String(due) } });
+    }
+    alarmWindow.show();
+    alarmWindow.focus();
+    return;
+  }
+  const area = screen.getPrimaryDisplay().workArea;
+  const width = 360;
+  const height = 260;
+  const win = new BrowserWindow({
+    width,
+    height,
+    x: area.x + area.width - width - 40,
+    y: area.y + 40,
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    webPreferences: {
+      preload: path.join(ROOT, 'preload/preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+  alarmWindow = win;
+  win.setBackgroundColor('#00000000');
+  win.setAlwaysOnTop(true, 'screen-saver');
+  if (process.env.VITE_DEV) {
+    void win.loadURL(`http://localhost:5173/alarm.html?text=${encodeURIComponent(safeText)}&dueAt=${due}`);
+  } else {
+    void win.loadFile(path.join(ROOT, 'renderer/alarm.html'), { query: { text: safeText, dueAt: String(due) } });
+  }
+  win.on('closed', () => {
+    if (alarmWindow === win) alarmWindow = null;
+  });
+  // 闹钟渲染进程日志（与主窗口一致，便于排查）
+  win.webContents.on('console-message', (_e, _level, message) => {
+    try {
+      fs.appendFileSync(path.join(__dirname, '../../../renderer-log.txt'), `[alarm-renderer] ${new Date().toISOString()} ${message}\n`);
+    } catch {
+      // ignore
+    }
+  });
+  win.webContents.on('did-finish-load', () => {
+    void win.webContents.executeJavaScript(
+      `JSON.stringify({ title: document.title, text: document.getElementById('alarm-text')?.textContent ?? null })`
+    ).then((r: string) => console.log('[Alarm] renderer state:', r)).catch(() => { /* ignore */ });
+  });
+  console.log(`[Alarm] 闹钟窗口已打开: ${safeText} (${new Date(due).toLocaleString('zh-CN')})`);
+}
+
+function registerAlarmIpc(): void {
+  ipcMain.handle(IPC_CHANNELS.ALARM_OPEN, (_event, text: unknown, dueAt: unknown) => {
+    openAlarmWindow(typeof text === 'string' ? text : '时间到啦！', typeof dueAt === 'number' ? dueAt : Date.now());
+    return true;
+  });
+  ipcMain.handle(IPC_CHANNELS.ALARM_CLOSE, (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && alarmWindow && win.id === alarmWindow.id) win.close();
+    else alarmWindow?.close();
+    return true;
+  });
+  ipcMain.handle(IPC_CHANNELS.ALARM_SNOOZE, (_event, text: unknown) => {
+    alarmWindow?.close();
+    const t = typeof text === 'string' && text.trim() ? text.trim() : '时间到啦！';
+    addReminder(t, '5分钟后'); // 复用提醒调度：5 分钟后再次触发
+    return true;
+  });
+  ipcMain.handle(IPC_CHANNELS.ALARM_GET_BGM, () => {
+    const dir = path.join(app.getAppPath(), 'resources', 'audio');
+    const candidates = ['reminder-bgm.mp3', 'reminder-bgm.wav', 'reminder-bgm.m4a', 'reminder-bgm.ogg'];
+    for (const name of candidates) {
+      const p = path.join(dir, name);
+      if (fs.existsSync(p)) {
+        try {
+          const data = fs.readFileSync(p);
+          const format = name.endsWith('.wav') ? 'audio/wav' : name.endsWith('.m4a') ? 'audio/mp4' : name.endsWith('.ogg') ? 'audio/ogg' : 'audio/mpeg';
+          return { base64: data.toString('base64'), format };
+        } catch {
+          return null;
+        }
+      }
+    }
+    return null;
+  });
+}
+
+registerAlarmIpc();
+
+/** 注册手机提醒推送 IPC（Bark） */
+function registerPhonePushIpc(): void {
+  ipcMain.handle(IPC_CHANNELS.PHONE_PUSH_CONFIG_GET, () => resolvePhonePushConfig());
+  ipcMain.handle(IPC_CHANNELS.PHONE_PUSH_CONFIG_SET, (_event, patch: unknown) => savePhonePushConfig(patch));
+  ipcMain.handle(IPC_CHANNELS.PHONE_PUSH_TEST, () => testPhonePush());
+}
+
+registerPhonePushIpc();
 
 app.whenReady().then(() => {
   // 允许渲染进程使用麦克风（语音输入）
@@ -636,6 +858,19 @@ app.whenReady().then(() => {
   });
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) => permission === 'media');
   initTasks();
+  // 提醒触发时同时推送到所有聊天窗口（双保险：系统通知 + 聊天窗提示）
+  onReminderFired((text, dueAt) => {
+    const payload = { text, dueAt };
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send(IPC_CHANNELS.TASKS_REMINDER_EVENT, payload);
+    }
+    // ★ 闹钟弹窗：桌面弹窗 + BGM + 自动语音（与聊天窗推送、系统通知互为保险）
+    openAlarmWindow(text, dueAt);
+    // ★ 手机提醒：电脑与桌宠都在运行时，同步推送到手机（Bark）；失败不影响本地闹钟
+    void sendPhonePush(text, dueAt).catch((err) =>
+      console.error('[PhonePush] 推送异常:', err instanceof Error ? err.message : String(err))
+    );
+  });
   void initMcp(); // MCP 外部工具服务器（阶段 8） // 恢复待办与提醒
   createWindow();
   void initKnowledgeBase(); // 启动时后台建立知识库索引
